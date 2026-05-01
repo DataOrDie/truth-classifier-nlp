@@ -1,17 +1,14 @@
-"""Automated sweep over all speaker.py preprocessing option combinations.
+"""Feature sweep over all speaker.py preprocessing option combinations.
 
-For every valid combination of speaker options, trains a LogisticRegression
-and logs the result to a separate W&B run. Primary metric: macro F1.
+Speed strategy:
+  - Statement TF-IDF + lemmatization (the expensive part) is precomputed ONCE.
+  - Subject features (recommended config) are also precomputed in the base pass.
+  - Each iteration only reruns the speaker module (cheap: frequency/groupby).
+  - 3-fold CV during the sweep; holdout evaluated only for the winning config.
+  - liblinear solver + lower max_iter for faster ranking fits.
 
-One speaker option is intentionally excluded from the sweep:
+One speaker option is excluded:
   - speaker_add_speaker_primary_true_rate → target-encoding leakage risk
-
-Note: speaker_add_length_features and speaker_add_token_count both produce
-speaker_token_count. When both are True the column appears once (the module
-writes it; the second flag is a no-op on an existing column).
-
-Total unique configs generated: 512
-Set MAX_RUNS to an integer to cap the sweep (useful for quick testing).
 """
 
 from itertools import product
@@ -25,6 +22,7 @@ import wandb
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
+    classification_report,
     f1_score,
     roc_auc_score,
 )
@@ -59,7 +57,7 @@ wandb.login()
 
 
 # -----------------------------------------------------------------------------
-# Load data once — reused across all runs
+# Load raw data once
 # -----------------------------------------------------------------------------
 
 print("[SECTION] Loading data")
@@ -69,8 +67,8 @@ print(f"Loaded {len(df):,} rows")
 
 # =============================================================================
 # BASE CONFIG VARIABLES
-# Statement, subject, party, and feature-engineering options stay fixed.
-# These are the recommended [linear] settings from PREPROCESSING_OPTIONS.md.
+# Statement, subject, party, and FE stay fixed — computed ONCE.
+# Speaker options are left at defaults (no features added in the base pass).
 # =============================================================================
 
 # --- Statement ---
@@ -84,7 +82,7 @@ statement_keep_negations          = True
 statement_add_lexical_features    = True
 statement_scale                   = "standardize"
 
-# --- Subject (recommended fixed config) ---
+# --- Subject (fixed recommended config) ---
 subject_add_primary           = True
 subject_add_subject_frequency = True
 subject_add_topic_count       = True
@@ -103,11 +101,49 @@ fe_scale                = "standardize"
 
 
 # =============================================================================
+# STEP 1 — PRECOMPUTE BASE FEATURES (runs once)
+# Speaker options are at defaults here (only speaker_clean is produced).
+# =============================================================================
+
+print("\n[SECTION] Precomputing base features (statement TF-IDF + subject + party + FE)")
+base_options = OneStepOptions(
+    # Statement — full expensive config
+    statement_vectorizer_type=statement_vectorizer_type,
+    statement_vectorizer_max_features=statement_vectorizer_max_features,
+    statement_vectorizer_min_df=statement_vectorizer_min_df,
+    statement_vectorizer_max_df=statement_vectorizer_max_df,
+    statement_stopword_removal=statement_stopword_removal,
+    statement_lemmatizer=statement_lemmatizer,
+    statement_keep_negations=statement_keep_negations,
+    statement_add_lexical_features=statement_add_lexical_features,
+    statement_scale=statement_scale,
+    # Subject
+    subject_add_primary=subject_add_primary,
+    subject_add_subject_frequency=subject_add_subject_frequency,
+    subject_add_topic_count=subject_add_topic_count,
+    subject_scale=subject_scale,
+    # Speaker — defaults only (no add_* flags), so no speaker features are added
+    # Party
+    party_affiliation_add_is_major_party=party_affiliation_add_is_major_party,
+    party_affiliation_add_frequency=party_affiliation_add_frequency,
+    # Feature engineering
+    fe_add_negation_count=fe_add_negation_count,
+    fe_add_hedge_count=fe_add_hedge_count,
+    fe_add_absolutist_count=fe_add_absolutist_count,
+    fe_add_readability=fe_add_readability,
+    fe_scale=fe_scale,
+)
+
+df_base   = preprocess_one_step(df, options=base_options)
+y_all     = df_base["label"]
+X_base    = df_base.drop(columns=["label"]).select_dtypes(exclude="object")
+base_cols = set(X_base.columns)
+
+print(f"Base feature matrix: {X_base.shape[0]:,} rows × {X_base.shape[1]:,} features")
+
+
+# =============================================================================
 # SPEAKER OPTION GRID
-#
-# Every key is a valid OneStepOptions field from speaker.py.
-# Values list the candidates to try for that option.
-# Reduce any list to a single value to skip variation on that option.
 # =============================================================================
 
 SPEAKER_GRID = {
@@ -122,32 +158,19 @@ SPEAKER_GRID = {
     "speaker_scale":               ["none", "standardize"],
 }
 
-# Set to an integer to cap the number of runs (useful for testing).
-# Set to None to run all generated configurations.
+# Set to an integer to cap the number of runs. None = run all.
 MAX_RUNS = None
 
 
-# =============================================================================
-# CONFIG GENERATOR
-# =============================================================================
-
 def generate_speaker_configs():
-    """Return deduplicated list of valid speaker option dicts from SPEAKER_GRID."""
-    keys   = list(SPEAKER_GRID.keys())
-    seen   = set()
-    result = []
-
+    keys, seen, result = list(SPEAKER_GRID.keys()), set(), []
     for values in product(*SPEAKER_GRID.values()):
         cfg = dict(zip(keys, values))
-
-        # speaker_group_rare must be True whenever speaker_add_grouped_speaker=True.
         cfg["speaker_group_rare"] = cfg["speaker_add_grouped_speaker"]
-
         frozen = tuple(sorted(cfg.items()))
         if frozen not in seen:
             seen.add(frozen)
             result.append(cfg)
-
     return result
 
 
@@ -156,20 +179,22 @@ if MAX_RUNS is not None:
     speaker_configs = speaker_configs[:MAX_RUNS]
 
 print(f"\nTotal speaker configurations to run: {len(speaker_configs)}")
-print("(Set MAX_RUNS or narrow SPEAKER_GRID values to limit the sweep)\n")
+print("(Adjust SPEAKER_GRID or set MAX_RUNS to limit)\n")
 
 
 # =============================================================================
-# MODEL HYPERPARAMETERS (fixed across all runs)
+# MODEL HYPERPARAMETERS
 # =============================================================================
 
-CLASS_WEIGHT = {0: 1.42, 1: 0.77}   # from CLAUDE.md — handles 35%/65% imbalance
+CLASS_WEIGHT = {0: 1.42, 1: 0.77}
 C_VALUE      = 1.0
-MAX_ITER     = 1000
+MAX_ITER     = 300
+CV_FOLDS     = 3
 
 
 # =============================================================================
-# TRAINING LOOP
+# STEP 2 — SWEEP LOOP
+# Each iteration only reruns the speaker module (no TF-IDF, no lemmatization).
 # =============================================================================
 
 all_results = []
@@ -181,68 +206,51 @@ for run_idx, spkr_cfg in enumerate(speaker_configs, 1):
     print("="*60)
 
     # -------------------------------------------------------------------------
-    # Build OneStepOptions: base variables + current speaker config
+    # Fast speaker-only preprocessing pass
+    # Statement module runs basic cleaning only (vectorizer + lemmatizer off).
+    # All other modules run at defaults — no extra columns added.
     # -------------------------------------------------------------------------
-    options = OneStepOptions(
-        # Statement
-        statement_vectorizer_type=statement_vectorizer_type,
-        statement_vectorizer_max_features=statement_vectorizer_max_features,
-        statement_vectorizer_min_df=statement_vectorizer_min_df,
-        statement_vectorizer_max_df=statement_vectorizer_max_df,
-        statement_stopword_removal=statement_stopword_removal,
-        statement_lemmatizer=statement_lemmatizer,
-        statement_keep_negations=statement_keep_negations,
-        statement_add_lexical_features=statement_add_lexical_features,
-        statement_scale=statement_scale,
-        # Subject
-        subject_add_primary=subject_add_primary,
-        subject_add_subject_frequency=subject_add_subject_frequency,
-        subject_add_topic_count=subject_add_topic_count,
-        subject_scale=subject_scale,
-        # Speaker — spread the current config dict directly
+    iter_options = OneStepOptions(
+        # Statement: skip expensive parts (already in base features)
+        statement_vectorizer_type="none",
+        statement_lemmatizer="none",
+        statement_stopword_removal=False,
+        statement_add_lexical_features=False,
+        # Subject: defaults only (already in base features)
+        # Speaker: current config under test
         **spkr_cfg,
-        # Party
-        party_affiliation_add_is_major_party=party_affiliation_add_is_major_party,
-        party_affiliation_add_frequency=party_affiliation_add_frequency,
-        # Feature engineering
-        fe_add_negation_count=fe_add_negation_count,
-        fe_add_hedge_count=fe_add_hedge_count,
-        fe_add_absolutist_count=fe_add_absolutist_count,
-        fe_add_readability=fe_add_readability,
-        fe_scale=fe_scale,
+        # Party / FE: defaults only (already in base features)
     )
+    df_iter  = preprocess_one_step(df, options=iter_options)
+    X_iter   = df_iter.drop(columns=["label"], errors="ignore").select_dtypes(exclude="object")
+    new_cols = [c for c in X_iter.columns if c not in base_cols]
+
+    if new_cols:
+        X = pd.concat([X_base, X_iter[new_cols]], axis=1)
+    else:
+        X = X_base.copy()
+
+    y = y_all
+    print(f"Features: {X_base.shape[1]} base + {len(new_cols)} speaker = {X.shape[1]} total")
 
     # -------------------------------------------------------------------------
-    # Preprocess
-    # -------------------------------------------------------------------------
-    df_proc = preprocess_one_step(df, options=options)
-
-    y = df_proc["label"]
-    X = df_proc.drop(columns=["label"])
-
-    # Drop string columns — LogisticRegression only accepts numeric input
-    string_cols = X.select_dtypes(include="object").columns.tolist()
-    if string_cols:
-        X = X.drop(columns=string_cols)
-
-    print(f"Feature matrix: {X.shape[0]:,} rows × {X.shape[1]:,} features")
-
-    # -------------------------------------------------------------------------
-    # Train / holdout split — same random_state every run for fair comparison
+    # Train / holdout split
     # -------------------------------------------------------------------------
     X_trainval, X_holdout, y_trainval, y_holdout = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
     # -------------------------------------------------------------------------
-    # Init W&B run — log base config + speaker config as hyperparams
+    # W&B run
     # -------------------------------------------------------------------------
     wandb_run = wandb.init(
         project="truth-classifier-lr-speaker-sweep",
         config={
             "model":      "LogisticRegression",
+            "solver":     "liblinear",
             "C":          C_VALUE,
             "max_iter":   MAX_ITER,
+            "cv_folds":   CV_FOLDS,
             "n_features": int(X_trainval.shape[1]),
             **{f"spkr__{k}": str(v) for k, v in spkr_cfg.items()},
         },
@@ -250,63 +258,34 @@ for run_idx, spkr_cfg in enumerate(speaker_configs, 1):
     )
 
     # -------------------------------------------------------------------------
-    # 5-fold stratified cross-validation (primary metric: macro F1)
+    # 3-fold CV
     # -------------------------------------------------------------------------
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    skf = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=42)
     fold_macro_f1s = []
 
     for fold, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval), 1):
         fold_model = LogisticRegression(
             C=C_VALUE,
-            solver="lbfgs",
+            solver="liblinear",
             max_iter=MAX_ITER,
             class_weight=CLASS_WEIGHT,
             random_state=42,
-            n_jobs=-1,
         )
         fold_model.fit(X_trainval.iloc[train_idx], y_trainval.iloc[train_idx])
-        y_pred_fold = fold_model.predict(X_trainval.iloc[val_idx])
-        macro_f1    = f1_score(y_trainval.iloc[val_idx], y_pred_fold, average="macro", zero_division=0)
+        macro_f1 = f1_score(
+            y_trainval.iloc[val_idx],
+            fold_model.predict(X_trainval.iloc[val_idx]),
+            average="macro",
+            zero_division=0,
+        )
         fold_macro_f1s.append(macro_f1)
         wandb.log({"cv/fold": fold, "cv/macro_f1": macro_f1})
 
     cv_mean = float(np.mean(fold_macro_f1s))
     cv_std  = float(np.std(fold_macro_f1s))
     print(f"CV macro_f1: {cv_mean:.4f} ± {cv_std:.4f}")
+
     wandb.log({"cv/mean_macro_f1": cv_mean, "cv/std_macro_f1": cv_std})
-
-    # -------------------------------------------------------------------------
-    # Refit on full train/val, evaluate once on holdout
-    # -------------------------------------------------------------------------
-    final_model = LogisticRegression(
-        C=C_VALUE,
-        solver="lbfgs",
-        max_iter=MAX_ITER,
-        class_weight=CLASS_WEIGHT,
-        random_state=42,
-        n_jobs=-1,
-    )
-    final_model.fit(X_trainval, y_trainval)
-
-    y_pred_holdout = final_model.predict(X_holdout)
-    y_prob_holdout = final_model.predict_proba(X_holdout)[:, 1]
-
-    holdout_macro_f1 = f1_score(y_holdout, y_pred_holdout, average="macro", zero_division=0)
-    holdout_roc_auc  = roc_auc_score(y_holdout, y_prob_holdout)
-    holdout_accuracy = accuracy_score(y_holdout, y_pred_holdout)
-
-    print(
-        f"Holdout  macro_f1={holdout_macro_f1:.4f}  "
-        f"roc_auc={holdout_roc_auc:.4f}  "
-        f"acc={holdout_accuracy:.4f}"
-    )
-
-    wandb.log({
-        "holdout/macro_f1": holdout_macro_f1,
-        "holdout/roc_auc":  holdout_roc_auc,
-        "holdout/accuracy": holdout_accuracy,
-    })
-    wandb_run.summary["macro_f1"]         = holdout_macro_f1
     wandb_run.summary["cv_mean_macro_f1"] = cv_mean
     wandb_run.finish()
 
@@ -314,16 +293,15 @@ for run_idx, spkr_cfg in enumerate(speaker_configs, 1):
         "run":              run_idx,
         "cv_mean_macro_f1": cv_mean,
         "cv_std_macro_f1":  cv_std,
-        "holdout_macro_f1": holdout_macro_f1,
-        "holdout_roc_auc":  holdout_roc_auc,
+        "n_speaker_cols":   len(new_cols),
         **spkr_cfg,
     })
 
-    sleep(2)
+    sleep(1)
 
 
 # =============================================================================
-# RESULTS SUMMARY
+# RESULTS SUMMARY + HOLDOUT EVALUATION FOR THE WINNER
 # =============================================================================
 
 print("\n" + "="*70)
@@ -335,8 +313,45 @@ pd.set_option("display.max_columns", None)
 pd.set_option("display.width", 200)
 print(results_df.to_string(index=False))
 
-best = results_df.iloc[0]
-print(f"\nBest speaker config  (cv_mean_macro_f1={best['cv_mean_macro_f1']:.4f}, "
-      f"holdout_macro_f1={best['holdout_macro_f1']:.4f}):")
+best_cfg = results_df.iloc[0]
+print(f"\nBest speaker config  (cv_mean_macro_f1={best_cfg['cv_mean_macro_f1']:.4f}):")
 for k in SPEAKER_GRID:
-    print(f"  {k}: {best[k]}")
+    print(f"  {k}: {best_cfg[k]}")
+
+
+# --- Reconstruct best feature matrix and evaluate on holdout ---
+print("\n[SECTION] Evaluating best config on holdout set")
+
+best_spkr_cfg = {k: best_cfg[k] for k in list(SPEAKER_GRID.keys()) + ["speaker_group_rare"]}
+
+iter_options = OneStepOptions(
+    statement_vectorizer_type="none",
+    statement_lemmatizer="none",
+    statement_stopword_removal=False,
+    statement_add_lexical_features=False,
+    **best_spkr_cfg,
+)
+df_best  = preprocess_one_step(df, options=iter_options)
+X_best   = df_best.drop(columns=["label"], errors="ignore").select_dtypes(exclude="object")
+new_cols = [c for c in X_best.columns if c not in base_cols]
+
+X_final = pd.concat([X_base, X_best[new_cols]], axis=1) if new_cols else X_base.copy()
+y_final = y_all
+
+X_trainval_f, X_holdout_f, y_trainval_f, y_holdout_f = train_test_split(
+    X_final, y_final, test_size=0.2, random_state=42, stratify=y_final
+)
+
+final_model = LogisticRegression(
+    C=C_VALUE, solver="liblinear", max_iter=MAX_ITER,
+    class_weight=CLASS_WEIGHT, random_state=42,
+)
+final_model.fit(X_trainval_f, y_trainval_f)
+
+y_pred_h = final_model.predict(X_holdout_f)
+y_prob_h = final_model.predict_proba(X_holdout_f)[:, 1]
+
+print(f"Holdout macro_f1 : {f1_score(y_holdout_f, y_pred_h, average='macro', zero_division=0):.4f}")
+print(f"Holdout roc_auc  : {roc_auc_score(y_holdout_f, y_prob_h):.4f}")
+print(f"Holdout accuracy : {accuracy_score(y_holdout_f, y_pred_h):.4f}")
+print(f"\n{classification_report(y_holdout_f, y_pred_h, target_names=['true(0)', 'false(1)'])}")
