@@ -59,3 +59,4 @@ submissions/
 *.joblib
 *.npy
 *.npz
+CLAUDE.md
