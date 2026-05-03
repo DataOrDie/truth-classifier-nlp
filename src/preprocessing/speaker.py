@@ -170,7 +170,7 @@ def preprocess_speaker(
 
     if add_title_flag:
         result[f"{source_col}_has_title"] = speaker_raw.str.contains(
-            r"\b(mr|mrs|ms|dr|gov|sen|rep|pres|prof)\b",
+            r"\b(?:mr|mrs|ms|dr|gov|sen|rep|pres|prof)\b",
             case=False,
             regex=True,
         ).fillna(False).astype(int)

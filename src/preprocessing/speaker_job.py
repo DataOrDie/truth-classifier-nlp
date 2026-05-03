@@ -164,7 +164,7 @@ def preprocess_speaker_job(
 
     if add_title_flag:
         result[f"{source_col}_has_title"] = job_raw.str.contains(
-            r"\b(ceo|cfo|cto|professor|doctor|dr|senator|judge|mayor|governor|attorney|lawyer|president|executive|director)\b",
+            r"\b(?:ceo|cfo|cto|professor|doctor|dr|senator|judge|mayor|governor|attorney|lawyer|president|executive|director)\b",
             case=False,
             regex=True,
         ).fillna(False).astype(int)

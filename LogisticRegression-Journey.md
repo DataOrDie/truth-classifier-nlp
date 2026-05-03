@@ -137,3 +137,18 @@ Looking at your results, the clearest signal is class 0 (true statements) is
   2. Try C=0.1 with penalty='l1'
   3. Adjust class weights toward {0: 2.0, 1: 0.7}
   4. True-rate features inside CV (biggest potential, most work)
+
+  ---
+
+  DID -  Threshold tunning
+  The flow now is:                                     
+                                                                                          
+  1. CV loop — collects OOF probabilities in oof_proba / oof_true alongside the normal fold metrics
+  2. Threshold tuning — scans [0.20 … 0.75] in steps of 0.02, evaluates THRESHOLD_METRIC on OOF predictions (no holdout leakage),  
+  prints the full grid table with the winner marked ←
+  3. Holdout eval — uses the tuned THRESHOLD instead of the default 0.5                                                            
+                                                                                                                                 
+  Three knobs at the top of the config block:
+  enable_threshold_tuning = True   # set False to skip entirely
+  overwrite_threshold     = True   # set False to see results but keep THRESHOLD=0.5
+  THRESHOLD_METRIC        = "macro_f1"  # or "mcc" | "balanced_acc"

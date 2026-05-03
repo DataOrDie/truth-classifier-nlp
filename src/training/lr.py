@@ -704,9 +704,16 @@ MAX_ITER          = 1000
 model_name        = "lr"
 create_kaggle_csv = True
 
-# "class_weight"    → pass CLASS_WEIGHT to LogisticRegression (no resampling)
+# "class_weight"      → pass CLASS_WEIGHT to LogisticRegression (no resampling)
 # "oversample_reject" → upsample class 0 (true statements, minority) to match class 1
 balance_strategy  = "class_weight"  # "none" | "class_weight" | "oversample_reject"
+
+# Threshold tuning — searches for the probability cutoff that maximises THRESHOLD_METRIC
+# on out-of-fold (OOF) predictions from the CV loop (no holdout leakage).
+THRESHOLD              = 0.5    # default; overwritten when tuning runs + overwrite_threshold=True
+enable_threshold_tuning = True
+overwrite_threshold     = True
+THRESHOLD_METRIC        = "macro_f1"  # metric to maximise: "macro_f1" | "mcc" | "balanced_acc"
 
 
 def rebalance_training_data(
@@ -787,6 +794,8 @@ run = wandb.init(
 print(f"[SECTION] Running cross-validation  [{_now()}]")
 _cv_start = time()
 cv_fold_metrics = []
+oof_proba = np.zeros(len(X_trainval))
+oof_true  = np.zeros(len(X_trainval), dtype=int)
 
 for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval), 1):
     _fold_t = time()
@@ -807,6 +816,9 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
 
     y_fold_pred  = fold_model.predict(X_fold_val)
     y_fold_proba = fold_model.predict_proba(X_fold_val)[:, 1]
+
+    oof_proba[val_idx] = y_fold_proba
+    oof_true[val_idx]  = y_fold_val.values
 
     fold_metrics = {
         "fold":         fold_idx,
@@ -861,6 +873,49 @@ wandb.log({"cv/folds_table": cv_table, **cv_summary})
 
 
 # -----------------------------------------------------------------------------
+# Threshold tuning (OOF)
+# -----------------------------------------------------------------------------
+if enable_threshold_tuning:
+    print(f"\n[SECTION] Threshold tuning on OOF predictions  [{_now()}]")
+
+    _metric_fn = {
+        "macro_f1":     lambda t, yt, yp: f1_score(yt, yp, average="macro", zero_division=0),
+        "mcc":          lambda t, yt, yp: matthews_corrcoef(yt, yp),
+        "balanced_acc": lambda t, yt, yp: balanced_accuracy_score(yt, yp),
+    }[THRESHOLD_METRIC]
+
+    threshold_grid   = np.arange(0.20, 0.76, 0.02)
+    threshold_scores = {}
+    for t in threshold_grid:
+        preds = (oof_proba >= t).astype(int)
+        threshold_scores[round(float(t), 2)] = _metric_fn(t, oof_true, preds)
+
+    best_threshold = max(threshold_scores, key=threshold_scores.get)
+    best_score     = threshold_scores[best_threshold]
+
+    print(f"  {'threshold':>10}   {THRESHOLD_METRIC}")
+    for t, s in threshold_scores.items():
+        marker = "  ←" if t == best_threshold else ""
+        print(f"  {t:>10.2f}   {s:.4f}{marker}")
+    print(f"\n  Best threshold: {best_threshold:.2f}  (OOF {THRESHOLD_METRIC}={best_score:.4f})")
+
+    wandb.log({
+        "threshold/best":       best_threshold,
+        f"threshold/oof_{THRESHOLD_METRIC}": best_score,
+        "threshold/grid": wandb.Table(
+            columns=["threshold", THRESHOLD_METRIC],
+            data=[[t, s] for t, s in threshold_scores.items()],
+        ),
+    })
+
+    if overwrite_threshold:
+        THRESHOLD = best_threshold
+        print(f"  THRESHOLD updated: 0.50 → {THRESHOLD:.2f}")
+    else:
+        print(f"  THRESHOLD kept at {THRESHOLD:.2f} (overwrite_threshold=False)")
+
+
+# -----------------------------------------------------------------------------
 # Final fit on full trainval
 # -----------------------------------------------------------------------------
 print(f"[SECTION] Fitting final model on full train/val set  [{_now()}]")
@@ -881,8 +936,9 @@ print(f"  Done in {time()-_t0:.1f}s")
 # Holdout evaluation
 # -----------------------------------------------------------------------------
 print(f"[SECTION] Evaluating on holdout set  [{_now()}]")
-y_pred  = model.predict(X_holdout)
+print(f"  Using threshold: {THRESHOLD:.2f}")
 y_proba = model.predict_proba(X_holdout)[:, 1]
+y_pred  = (y_proba >= THRESHOLD).astype(int)
 
 holdout_metrics = {
     "roc_auc":      roc_auc_score(y_holdout, y_proba),
