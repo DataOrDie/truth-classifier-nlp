@@ -262,3 +262,52 @@ C and L1 penalty explained
    - Applies `model.predict_proba(X_test)[:, 1] >= threshold` for predictions.
    - Outputs `id, label` CSV (not `id, Accept`).
 
+-----------------------------------------------------------------------------------------
+
+# BIGRAMS
+
+ 4. Bigrams — capture phrase patterns
+  Change statement_vectorizer_type = 'bigram'. "never raised taxes" as a phrase
+  Your current weights {0: 1.42, 1: 0.77} come from the prior distribution but may not be aggressive enough. Try
+  class_weight='balanced' (sklearn computes it automatically) or bump class 0 manually: {0: 2.0, 1: 0.7}.
+
+  4. Bigrams — capture phrase patterns
+  Change statement_vectorizer_type = 'bigram'. "never raised taxes" as a phrase is more signal than "never" + "raised" + "taxes"
+  separately.
+
+Unigrams (current — 'tfidf')                                                                                                     
+                                                            
+  Each word becomes its own feature. The sentence "he never raised taxes" produces:
+
+  "he" → 1,  "never" → 1,  "raised" → 1,  "taxes" → 1
+
+  The model sees four independent signals. It can learn that "never" correlates with false claims, but it has no idea "never
+  raised" appeared together.
+
+  ---
+  Bigrams ('bigram')
+
+  Features are individual words plus all adjacent two-word pairs. Same sentence:
+
+  "he" → 1,  "never" → 1,  "raised" → 1,  "taxes" → 1,
+  "he never" → 1,  "never raised" → 1,  "raised taxes" → 1
+
+  The phrase "never raised taxes" is now a single feature. If politicians who make false claims disproportionately use that exact
+  phrase, the model can learn it directly — rather than having to infer it from three separate word weights.
+
+  ---
+  Why it might help here
+
+  Political misinformation has characteristic phrases: "lowest unemployment ever", "no new taxes", "100 percent voted for". These
+  are more meaningful as units than their individual words. TF-IDF bigrams capture that.
+
+  The tradeoff: feature count explodes. With max_features=5000 unigrams you have 5,000 columns. With bigrams and the same limit
+  you're still capped at 5,000, but now those 5,000 slots are competed for by both single words and pairs — you may lose some
+  important single words. You can raise statement_vectorizer_max_features to 10,000–15,000 to compensate.
+
+  To try it, just change one line in lr.py:
+
+  statement_vectorizer_type = 'bigram'
+  statement_vectorizer_max_features = 10000  # optional: give it more room
+
+  

@@ -142,7 +142,7 @@ statement_add_ner_features = False          # entity counts (PERSON, ORG, GPE, D
 statement_ner_model = 'en_core_web_sm'      # spaCy model; requires: pip install spacy
 
 # Vectorizer ('none' | 'tfidf' | 'bigram' | 'binary' | 'embeddings')
-statement_vectorizer_type = 'tfidf'
+statement_vectorizer_type = 'bigram'
 statement_vectorizer_max_features = 5000    # None = no vocab limit
 statement_vectorizer_min_df = 2             # minimum document frequency
 statement_vectorizer_max_df = 0.9           # maximum document frequency ratio
