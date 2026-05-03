@@ -368,3 +368,21 @@ DID: True-rate features inside CV folds — highest impact for Politifact
   - Loads lr-true-rate-maps.joblib if it exists.
   - After preprocessing test data, maps each test row's speaker/subject/party to its training-set false-claim rate. Unseen groups
   (not in training data) get fallback = 0.5.
+
+
+  -----------------------------
+
+    ---                                                                                                                              
+  1. Sentence embeddings — 2 lines                                                                                                 
+                                                                                                                                   
+  Just switch the vectorizer type. The pipeline already supports it:                                                               
+                                                                                                                                 
+  # lr.py ~line 145
+  statement_vectorizer_type = 'embeddings'
+  statement_vectorizer_max_features = 5000   # ignored for embeddings — produces 384 embed_* columns
+
+  Trade-off: embeddings are ~384 dense columns vs. ~10,000 sparse TF-IDF columns. Much slower to compute (sentence-transformers
+  model must run). You can keep TF-IDF bigrams AND embeddings only by running preprocessing twice and concatenating — but that
+  requires more restructuring.
+
+  
