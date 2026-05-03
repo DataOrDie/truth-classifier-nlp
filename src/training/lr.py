@@ -23,7 +23,7 @@ from sklearn.metrics import (
     roc_curve,
 )
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
 
 def find_project_root(start: Path) -> Path:
     for candidate in [start, *start.parents]:
@@ -699,7 +699,8 @@ print(f"Train/val: {X_trainval.shape[0]:,}   Holdout: {X_holdout.shape[0]:,}   C
 # Model hyperparameters
 # -----------------------------------------------------------------------------
 CLASS_WEIGHT      = {0: 1.42, 1: 0.77}
-C_VALUE           = 1.0
+C_VALUE           = 1.0           # overwritten by HP search when enable_hp_search=True
+PENALTY           = "l2"          # overwritten by HP search when enable_hp_search=True
 MAX_ITER          = 1000
 model_name        = "lr"
 create_kaggle_csv = True
@@ -707,6 +708,12 @@ create_kaggle_csv = True
 # "class_weight"      → pass CLASS_WEIGHT to LogisticRegression (no resampling)
 # "oversample_reject" → upsample class 0 (true statements, minority) to match class 1
 balance_strategy  = "class_weight"  # "none" | "class_weight" | "oversample_reject"
+
+# Hyperparameter search — GridSearchCV over C × penalty before the main CV loop.
+# Finds the best combo, then the main CV evaluates it in full detail.
+enable_hp_search  = True
+C_GRID            = [0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0]
+PENALTY_GRID      = ["l1", "l2"]
 
 # Threshold tuning — searches for the probability cutoff that maximises THRESHOLD_METRIC
 # on out-of-fold (OOF) predictions from the CV loop (no holdout leakage).
@@ -750,6 +757,45 @@ _lr_class_weight = CLASS_WEIGHT if balance_strategy == "class_weight" else None
 # -----------------------------------------------------------------------------
 # W&B init
 # -----------------------------------------------------------------------------
+# Hyperparameter search (GridSearchCV)
+# -----------------------------------------------------------------------------
+if enable_hp_search:
+    print(f"[SECTION] Hyperparameter search: {len(C_GRID)} C values × {len(PENALTY_GRID)} penalties  [{_now()}]")
+    _t0 = time()
+
+    _search = GridSearchCV(
+        estimator=LogisticRegression(
+            solver="liblinear",
+            class_weight=_lr_class_weight,
+            max_iter=MAX_ITER,
+            random_state=42,
+        ),
+        param_grid={"C": C_GRID, "penalty": PENALTY_GRID},
+        scoring="f1_macro",
+        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=42),
+        n_jobs=-1,
+        refit=False,
+        verbose=0,
+    )
+    _search.fit(X_trainval, y_trainval)
+
+    _results = (
+        pd.DataFrame(_search.cv_results_)[["param_C", "param_penalty", "mean_test_score", "std_test_score"]]
+        .sort_values("mean_test_score", ascending=False)
+        .reset_index(drop=True)
+    )
+    print(f"\n  {'C':>8}  {'penalty':>8}  {'macro_f1':>10}  {'±':>8}")
+    for _, row in _results.iterrows():
+        best = (row["param_C"] == _search.best_params_["C"] and row["param_penalty"] == _search.best_params_["penalty"])
+        print(f"  {row['param_C']:>8}  {row['param_penalty']:>8}  {row['mean_test_score']:>10.4f}  {row['std_test_score']:>8.4f}{'  ←' if best else ''}")
+
+    C_VALUE = _search.best_params_["C"]
+    PENALTY = _search.best_params_["penalty"]
+    print(f"\n  Best: C={C_VALUE}, penalty={PENALTY}  (cv macro_f1={_search.best_score_:.4f})  [{time()-_t0:.1f}s]")
+    _lr_class_weight = CLASS_WEIGHT if balance_strategy == "class_weight" else None
+
+
+# -----------------------------------------------------------------------------
 print("[SECTION] Initializing W&B run")
 wandb.login()
 run = wandb.init(
@@ -758,9 +804,13 @@ run = wandb.init(
         "model":                   "LogisticRegression",
         "solver":                  "liblinear",
         "C":                       C_VALUE,
+        "penalty":                 PENALTY,
         "max_iter":                MAX_ITER,
         "balance_strategy":        balance_strategy,
         "class_weight":            str(_lr_class_weight),
+        "hp_search_enabled":       enable_hp_search,
+        "C_grid":                  str(C_GRID) if enable_hp_search else "n/a",
+        "penalty_grid":            str(PENALTY_GRID) if enable_hp_search else "n/a",
         "cv_folds":                skf.get_n_splits(),
         "n_trainval":              int(X_trainval.shape[0]),
         "n_holdout":               int(X_holdout.shape[0]),
@@ -808,6 +858,7 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
     fold_model = LogisticRegression(
         solver="liblinear",
         C=C_VALUE,
+        penalty=PENALTY,
         class_weight=_lr_class_weight,
         max_iter=MAX_ITER,
         random_state=42,
@@ -924,6 +975,7 @@ X_fit, y_fit = rebalance_training_data(X_trainval, y_trainval, balance_strategy)
 model = LogisticRegression(
     solver="liblinear",
     C=C_VALUE,
+    penalty=PENALTY,
     class_weight=_lr_class_weight,
     max_iter=MAX_ITER,
     random_state=42,

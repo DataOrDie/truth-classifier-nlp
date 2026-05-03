@@ -152,3 +152,96 @@ Looking at your results, the clearest signal is class 0 (true statements) is
   enable_threshold_tuning = True   # set False to skip entirely
   overwrite_threshold     = True   # set False to see results but keep THRESHOLD=0.5
   THRESHOLD_METRIC        = "macro_f1"  # or "mcc" | "balanced_acc"
+
+  [SECTION] Evaluating on holdout set  [18:54:42]
+  Using threshold: 0.46
+
+Holdout results:
+  roc_auc: 0.6533
+  pr_auc: 0.7668
+  macro_f1: 0.5958
+  f1: 0.7107
+  precision: 0.7167
+  recall: 0.7049
+  accuracy: 0.6285
+  mcc: 0.1918
+  balanced_acc: 0.5965
+
+              precision    recall  f1-score   support
+
+           0       0.47      0.49      0.48       631
+           1       0.72      0.70      0.71      1159
+
+    accuracy                           0.63      1790
+   macro avg       0.60      0.60      0.60      1790
+weighted avg       0.63      0.63      0.63      1790
+
+-----------------------------------------------------------------
+ DID - added gridsearch
+
+ GridSearchCV runs 70 fits (7 × 2 × 5 folds) in parallel (n_jobs=-1), picks the winner, then the detailed CV loop evaluates only
+  the best config. To disable the search and use fixed values, set enable_hp_search = False.
+
+C and L1 penalty explained        
+
+  What is regularization?                                                                                                          
+   
+  When a model trains, it can "memorize" the training data instead of learning general patterns — this is called overfitting.      
+  Regularization is a penalty added during training that forces the model to stay simple and not rely too heavily on any single
+  feature.
+
+  C controls how strong that penalty is — but it's inverted:
+  - Small C (e.g. 0.01) → strong penalty → simpler model → less overfitting
+  - Large C (e.g. 10.0) → weak penalty → model can use features freely → more risk of overfitting
+
+  With ~4,700 TF-IDF features and only 8,950 training samples, the model has a lot of words to work with and relatively few
+  examples, so a stronger penalty (smaller C) usually helps.
+
+  ---
+  L2 vs L1 — what's the difference?
+
+  Your model currently uses L2 (the default). Both penalize large weights, but differently:
+
+  ┌────────────────────┬──────────────────────────────────┬─────────────────────────────────────────────────────┐
+  │                    │           L2 (default)           │                         L1                          │
+  ├────────────────────┼──────────────────────────────────┼─────────────────────────────────────────────────────┤
+  │ What it does       │ Shrinks all weights toward zero  │ Pushes many weights to exactly zero                 │
+  ├────────────────────┼──────────────────────────────────┼─────────────────────────────────────────────────────┤
+  │ Effect on features │ Keeps all features, just smaller │ Automatic feature selection — kills irrelevant ones │
+  ├────────────────────┼──────────────────────────────────┼─────────────────────────────────────────────────────┤
+  │ Good for           │ Dense features                   │ Sparse features like TF-IDF                         │
+  └────────────────────┴──────────────────────────────────┴─────────────────────────────────────────────────────┘
+
+  With TF-IDF you have thousands of word features — most are probably noise ("the", "and", rare political jargon). L1 zeroes those
+  out entirely, leaving only the words that actually help. L2 just makes all of them smaller but keeps them all.
+
+  ---
+  In practice for your script
+
+  # Current (L2, default)
+  model = LogisticRegression(solver="liblinear", C=1.0, ...)
+
+  # L1 with more regularization — good first test
+  model = LogisticRegression(solver="liblinear", C=0.1, penalty="l1", ...)
+
+  ▎ liblinear is the only solver that supports L1, which is why you're already using it — it's ready to go.
+
+  ---
+  What to actually try
+
+  Run the script 3–4 times changing only C_VALUE and penalty:
+
+  C_VALUE = 0.1  ;  penalty = "l1"   # most likely to help — try this first
+  C_VALUE = 0.05 ;  penalty = "l1"
+  C_VALUE = 0.5  ;  penalty = "l1"
+  C_VALUE = 0.1  ;  penalty = "l2"   # compare L1 vs L2 at same C
+
+  Watch macro F1 and class 0 precision in the holdout results — those are the numbers most likely to move.
+
+
+----------------------------------------------------------------------------------------------
+
+
+
+
+
