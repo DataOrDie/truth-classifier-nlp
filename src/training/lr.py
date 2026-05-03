@@ -25,7 +25,8 @@ from sklearn.metrics import (
     roc_curve,
 )
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
+from scipy.stats import loguniform
+from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold, train_test_split
 
 def find_project_root(start: Path) -> Path:
     for candidate in [start, *start.parents]:
@@ -711,11 +712,12 @@ create_kaggle_csv = True
 # "oversample_reject" → upsample class 0 (true statements, minority) to match class 1
 balance_strategy  = "class_weight"  # "none" | "class_weight" | "oversample_reject"
 
-# Hyperparameter search — GridSearchCV over C × penalty before the main CV loop.
-# Finds the best combo, then the main CV evaluates it in full detail.
+# Hyperparameter search — nested CV: each outer fold runs its own inner
+# RandomizedSearchCV so C and penalty are tuned per fold without leakage.
+# After all folds, C_VALUE = geometric mean of fold bests; PENALTY = mode.
 enable_hp_search  = True
-C_GRID            = [0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0]
-PENALTY_GRID      = ["l1", "l2"]
+N_ITER_SEARCH     = 20
+C_DIST            = loguniform(1e-3, 10)
 
 # Threshold tuning — searches for the probability cutoff that maximises THRESHOLD_METRIC
 # on out-of-fold (OOF) predictions from the CV loop (no holdout leakage).
@@ -803,45 +805,6 @@ if enable_true_rate_features:
 # -----------------------------------------------------------------------------
 # W&B init
 # -----------------------------------------------------------------------------
-# Hyperparameter search (GridSearchCV)
-# -----------------------------------------------------------------------------
-if enable_hp_search:
-    print(f"[SECTION] Hyperparameter search: {len(C_GRID)} C values × {len(PENALTY_GRID)} penalties  [{_now()}]")
-    _t0 = time()
-
-    _search = GridSearchCV(
-        estimator=LogisticRegression(
-            solver="liblinear",
-            class_weight=_lr_class_weight,
-            max_iter=MAX_ITER,
-            random_state=42,
-        ),
-        param_grid={"C": C_GRID, "penalty": PENALTY_GRID},
-        scoring="f1_macro",
-        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=42),
-        n_jobs=-1,
-        refit=False,
-        verbose=0,
-    )
-    _search.fit(X_trainval, y_trainval)
-
-    _results = (
-        pd.DataFrame(_search.cv_results_)[["param_C", "param_penalty", "mean_test_score", "std_test_score"]]
-        .sort_values("mean_test_score", ascending=False)
-        .reset_index(drop=True)
-    )
-    print(f"\n  {'C':>8}  {'penalty':>8}  {'macro_f1':>10}  {'±':>8}")
-    for _, row in _results.iterrows():
-        best = (row["param_C"] == _search.best_params_["C"] and row["param_penalty"] == _search.best_params_["penalty"])
-        print(f"  {row['param_C']:>8}  {row['param_penalty']:>8}  {row['mean_test_score']:>10.4f}  {row['std_test_score']:>8.4f}{'  ←' if best else ''}")
-
-    C_VALUE = _search.best_params_["C"]
-    PENALTY = _search.best_params_["penalty"]
-    print(f"\n  Best: C={C_VALUE}, penalty={PENALTY}  (cv macro_f1={_search.best_score_:.4f})  [{time()-_t0:.1f}s]")
-    _lr_class_weight = CLASS_WEIGHT if balance_strategy == "class_weight" else None
-
-
-# -----------------------------------------------------------------------------
 print("[SECTION] Initializing W&B run")
 wandb.login()
 run = wandb.init(
@@ -855,8 +818,7 @@ run = wandb.init(
         "balance_strategy":        balance_strategy,
         "class_weight":            str(_lr_class_weight),
         "hp_search_enabled":       enable_hp_search,
-        "C_grid":                  str(C_GRID) if enable_hp_search else "n/a",
-        "penalty_grid":            str(PENALTY_GRID) if enable_hp_search else "n/a",
+        "n_iter_search":           N_ITER_SEARCH if enable_hp_search else "n/a",
         "cv_folds":                skf.get_n_splits(),
         "n_trainval":              int(X_trainval.shape[0]),
         "n_holdout":               int(X_holdout.shape[0]),
@@ -909,6 +871,27 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
             X_fold_train_raw[_feat] = _grp_tr[_src_col].map(_rate_map).fillna(true_rate_fallback).values
             X_fold_val_raw[_feat]   = _grp_vl[_src_col].map(_rate_map).fillna(true_rate_fallback).values
 
+    fold_C, fold_penalty = C_VALUE, PENALTY
+    if enable_hp_search:
+        _inner = RandomizedSearchCV(
+            estimator=LogisticRegression(
+                solver="liblinear",
+                class_weight=_lr_class_weight,
+                max_iter=MAX_ITER,
+                random_state=42,
+            ),
+            param_distributions={"C": C_DIST, "penalty": ["l1", "l2"]},
+            n_iter=N_ITER_SEARCH,
+            scoring="f1_macro",
+            cv=StratifiedKFold(n_splits=3, shuffle=True, random_state=42),
+            n_jobs=-1,
+            refit=False,
+            random_state=42,
+        )
+        _inner.fit(X_fold_train_raw, y_trainval.iloc[train_idx])
+        fold_C       = _inner.best_params_["C"]
+        fold_penalty = _inner.best_params_["penalty"]
+
     X_fold_train, y_fold_train = rebalance_training_data(
         X_fold_train_raw, y_trainval.iloc[train_idx], balance_strategy
     )
@@ -917,8 +900,8 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
 
     fold_model = LogisticRegression(
         solver="liblinear",
-        C=C_VALUE,
-        penalty=PENALTY,
+        C=fold_C,
+        penalty=fold_penalty,
         class_weight=_lr_class_weight,
         max_iter=MAX_ITER,
         random_state=42,
@@ -933,6 +916,8 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
 
     fold_metrics = {
         "fold":         fold_idx,
+        "fold_C":       fold_C,
+        "fold_penalty": fold_penalty,
         "roc_auc":      roc_auc_score(y_fold_val, y_fold_proba),
         "pr_auc":       average_precision_score(y_fold_val, y_fold_proba),
         "macro_f1":     f1_score(y_fold_val, y_fold_pred, average="macro", zero_division=0),
@@ -947,6 +932,7 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
 
     print(
         f"  Fold {fold_idx} | "
+        f"C={fold_C:.4g}  penalty={fold_penalty}  "
         f"ROC-AUC={fold_metrics['roc_auc']:.4f}  "
         f"Macro-F1={fold_metrics['macro_f1']:.4f}  "
         f"MCC={fold_metrics['mcc']:.4f}  "
@@ -977,10 +963,33 @@ for k in _cv_keys:
     print(f"  {k}: {cv_summary[f'cv_mean_{k}']:.4f} ± {cv_summary[f'cv_std_{k}']:.4f}")
 
 cv_table = wandb.Table(
-    columns=["fold"] + _cv_keys,
-    data=[[int(m["fold"])] + [float(m[k]) for k in _cv_keys] for m in cv_fold_metrics],
+    columns=["fold", "fold_C", "fold_penalty"] + _cv_keys,
+    data=[
+        [int(m["fold"]), m["fold_C"], m["fold_penalty"]] + [float(m[k]) for k in _cv_keys]
+        for m in cv_fold_metrics
+    ],
 )
 wandb.log({"cv/folds_table": cv_table, **cv_summary})
+
+
+# -----------------------------------------------------------------------------
+# Aggregate per-fold HP results → final C_VALUE / PENALTY
+# -----------------------------------------------------------------------------
+if enable_hp_search:
+    _fold_Cs        = [m["fold_C"] for m in cv_fold_metrics]
+    _fold_penalties = [m["fold_penalty"] for m in cv_fold_metrics]
+    C_VALUE  = float(np.exp(np.mean(np.log(_fold_Cs))))
+    PENALTY  = max(set(_fold_penalties), key=_fold_penalties.count)
+    print(f"\n[SECTION] Nested CV HP aggregation")
+    print(f"  Per-fold C      : {[f'{c:.4g}' for c in _fold_Cs]}")
+    print(f"  Per-fold penalty: {_fold_penalties}")
+    print(f"  → C_VALUE (geomean) = {C_VALUE:.4g}   PENALTY (mode) = {PENALTY}")
+    wandb.config.update({"C": C_VALUE, "penalty": PENALTY}, allow_val_change=True)
+    wandb.log({
+        "hp/final_C":       C_VALUE,
+        "hp/final_penalty": PENALTY,
+        "hp/fold_C_std":    float(np.std(np.log(_fold_Cs))),
+    })
 
 
 # -----------------------------------------------------------------------------

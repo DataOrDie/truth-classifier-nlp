@@ -442,4 +442,63 @@ weighted avg       0.65      0.62      0.62      1790
   (no sparse TF-IDF), each fit is faster, so it's manageable.
 
   ---
+  3. Isotonic calibration — 5 lines
+
+  Replace the final model fit block with a CalibratedClassifierCV:
+
+  from sklearn.calibration import CalibratedClassifierCV
+
+  base_lr = LogisticRegression(
+      solver="liblinear", C=C_VALUE, penalty=PENALTY,
+      class_weight=_lr_class_weight, max_iter=MAX_ITER, random_state=42,
+  )
+  model = CalibratedClassifierCV(base_lr, method="isotonic", cv=5)
+  model.fit(X_fit, y_fit)
+
+  cv=5 means sklearn internally cross-validates to fit the calibration mapping — no separate calibration set needed. The
+  model.predict_proba output will be better-calibrated (probabilities closer to true frequencies), which makes the OOF threshold
+  tuning more meaningful.
+
+  One downstream consequence: model.coef_ no longer exists (it's a calibrated wrapper, not raw LR), so any W&B logging or
+  feature-importance code that accesses model.coef_ will break — need to guard those with hasattr.
+
+  ---
+  Summary table
+
+  ┌───────────────────────────┬───────────────────────────┬───────────────────────────────┐
+  │          Change           │      Lines affected       │        Runtime impact         │
+  ├───────────────────────────┼───────────────────────────┼───────────────────────────────┤
+  │ Embeddings                │ ~2                        │ Preprocessing slower (MiniLM) │
+  ├───────────────────────────┼───────────────────────────┼───────────────────────────────┤
+  │ Nested RandomizedSearchCV │ ~30, restructures CV loop │ +~230 fits                    │
+  ├───────────────────────────┼───────────────────────────┼───────────────────────────────┤
+  │ Isotonic calibration      │ ~5, replaces final fit    │ Negligible (+5 fits)          │
+  ├───────────────────────────┼───────────────────────────┼───────────────────────────────┤
+  │ Threshold tuning          │ Already implemented       │ —                             │
+  model.fit(X_fit, y_fit)
+
+  cv=5 means sklearn internally cross-validates to fit the calibration mapping — no separate calibration set needed. The
+  model.predict_proba output will be better-calibrated (probabilities closer to true frequencies), which makes the OOF threshold
+  tuning more meaningful.
+
+  One downstream consequence: model.coef_ no longer exists (it's a calibrated wrapper, not raw LR), so any W&B logging or
+  feature-importance code that accesses model.coef_ will break — need to guard those with hasattr.
+
+  ---
+  Summary table
+
+  ┌───────────────────────────┬───────────────────────────┬───────────────────────────────┐
+  │          Change           │      Lines affected       │        Runtime impact         │
+  ├───────────────────────────┼───────────────────────────┼───────────────────────────────┤
+  │ Embeddings                │ ~2                        │ Preprocessing slower (MiniLM) │
+  ├───────────────────────────┼───────────────────────────┼───────────────────────────────┤
+  │ Nested RandomizedSearchCV │ ~30, restructures CV loop │ +~230 fits                    │
+  ├───────────────────────────┼───────────────────────────┼───────────────────────────────┤
+  │ Isotonic calibration      │ ~5, replaces final fit    │ Negligible (+5 fits)          │
+  ├───────────────────────────┼───────────────────────────┼───────────────────────────────┤
+  │ Threshold tuning          │ Already implemented       │ —                             │
+  └───────────────────────────┴───────────────────────────┴───────────────────────────────┘
+
+  ----------------------------
+
   
