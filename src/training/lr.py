@@ -127,8 +127,8 @@ statement_number_token = '<NUM>'            # token used when replace_numbers=Tr
 statement_stopword_removal = False          # remove common English stopwords
 statement_keep_negations = True             # preserve negation words even when removing stopwords
 statement_remove_punctuation = False        # strip all punctuation characters
-statement_stemmer = 'porter'                # 'none' | 'porter' | 'snowball' -- requires NLTK
-statement_lemmatizer = 'none'               # 'none' | 'wordnet' -- requires NLTK
+statement_stemmer = 'none'                # 'none' | 'porter' | 'snowball' -- requires NLTK
+statement_lemmatizer = 'wordnet'               # 'none' | 'wordnet' -- requires NLTK
 statement_repair_polluted_statements = True # fix malformed/polluted statement text
 
 # Optional feature columns (all False by default)
