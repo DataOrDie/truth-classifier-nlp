@@ -698,7 +698,8 @@ print(f"Train/val: {X_trainval.shape[0]:,}   Holdout: {X_holdout.shape[0]:,}   C
 # -----------------------------------------------------------------------------
 # Model hyperparameters
 # -----------------------------------------------------------------------------
-CLASS_WEIGHT      = {0: 1.42, 1: 0.77}
+# CLASS_WEIGHT      = {0: 1.42, 1: 0.77}
+CLASS_WEIGHT = {0: 2.0, 1: 0.7}
 C_VALUE           = 1.0
 MAX_ITER          = 1000
 model_name        = "lr"
@@ -706,7 +707,7 @@ create_kaggle_csv = True
 
 # "class_weight"    → pass CLASS_WEIGHT to LogisticRegression (no resampling)
 # "oversample_reject" → upsample class 0 (true statements, minority) to match class 1
-balance_strategy  = "oversample_reject"  # "none" | "class_weight" | "oversample_reject"
+balance_strategy  = "class_weight"  # "none" | "class_weight" | "oversample_reject"
 
 
 def rebalance_training_data(
