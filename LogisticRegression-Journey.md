@@ -310,4 +310,61 @@ Unigrams (current — 'tfidf')
   statement_vectorizer_type = 'bigram'
   statement_vectorizer_max_features = 10000  # optional: give it more room
 
-  
+  Holdout results:
+  roc_auc: 0.6534
+  pr_auc: 0.7643
+  macro_f1: 0.6067
+  f1: 0.7073
+  precision: 0.7300
+  recall: 0.6859
+  accuracy: 0.6324
+  mcc: 0.2153
+  balanced_acc: 0.6100
+
+              precision    recall  f1-score   support
+
+           0       0.48      0.53      0.51       631
+           1       0.73      0.69      0.71      1159
+
+    accuracy                           0.63      1790
+   macro avg       0.61      0.61      0.61      1790
+weighted avg       0.64      0.63      0.64      1790
+
+
+------------------------------------------------
+
+DID: True-rate features inside CV folds — highest impact for Politifact                                      
+    fe_add_speaker_true_rate, fe_add_subject_true_rate, fe_add_party_true_rate are                                                 
+     currently excluded. A speaker's historical lie rate is the strongest single                                                   
+    feature in this dataset. They're excluded from the global preprocessing                                                        
+    because of leakage risk, but they're safe inside CV folds. This requires                                                       
+    restructuring the training loop to compute them per-fold. for Logistic Regression 
+
+    How the true-rate features work (leakage-free)                                                                                   
+   
+  The problem: if you compute "what fraction of Barack Obama's statements are false?" on all 8,950 rows, and then use that as a    
+  feature, the model has seen the validation rows' labels — that's leakage.                                                      
+
+  The fix: compute the rates only from the training fold, then apply them to the validation fold.
+
+  ---
+  Changes made
+
+  lr.py — 6 locations:
+
+  1. Config — enable_true_rate_features = True, true_rate_fallback = 0.5
+  2. True-rate setup block (new section, runs after model config) — detects which grouped columns exist (speaker_grouped,
+  subject_grouped, party_affiliation_grouped), adds placeholder columns (= 0.5) to X_trainval and X_holdout, and builds
+  _grp_trainval/_grp_holdout (positional metadata frames for groupby).
+  3. CV fold loop — each fold now: (a) computes speaker_grouped → mean(label) on the training fold only, (b) maps those rates to
+  both the training fold and validation fold rows, (c) passes the enriched X_fold_train_raw into rebalance_training_data so
+  oversampled rows carry the correct rates through.
+  4. Final fit — computes rates from all of X_trainval, updates both X_trainval_final and X_holdout with the real values before
+  fitting and evaluation.
+  5. Save — writes lr-true-rate-maps.joblib containing the rate dicts + source column names + fallback value.
+  6. W&B config — logs true_rate_features and true_rate_cols.
+
+  kaggle-modulo.py:
+  - Loads lr-true-rate-maps.joblib if it exists.
+  - After preprocessing test data, maps each test row's speaker/subject/party to its training-set false-claim rate. Unseen groups
+  (not in training data) get fallback = 0.5.

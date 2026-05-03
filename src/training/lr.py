@@ -127,8 +127,8 @@ statement_number_token = '<NUM>'            # token used when replace_numbers=Tr
 statement_stopword_removal = False          # remove common English stopwords
 statement_keep_negations = True             # preserve negation words even when removing stopwords
 statement_remove_punctuation = False        # strip all punctuation characters
-statement_stemmer = 'none'                # 'none' | 'porter' | 'snowball' -- requires NLTK
-statement_lemmatizer = 'wordnet'               # 'none' | 'wordnet' -- requires NLTK
+statement_stemmer = 'porter'                # 'none' | 'porter' | 'snowball' -- requires NLTK
+statement_lemmatizer = 'none'               # 'none' | 'wordnet' -- requires NLTK
 statement_repair_polluted_statements = True # fix malformed/polluted statement text
 
 # Optional feature columns (all False by default)
@@ -724,6 +724,11 @@ enable_threshold_tuning = True
 overwrite_threshold     = True
 THRESHOLD_METRIC        = "macro_f1"  # metric to maximise: "macro_f1" | "mcc" | "balanced_acc"
 
+# True-rate features — per speaker/subject/party historical false-claim rate.
+# Computed inside CV folds to avoid target leakage. Strongest single signal on Politifact.
+enable_true_rate_features = True
+true_rate_fallback = 0.5  # assigned to groups unseen in the training fold or test set
+
 
 def rebalance_training_data(
     X_train: pd.DataFrame,
@@ -754,6 +759,45 @@ def rebalance_training_data(
 
 # class_weight arg passed to LR — None when resampling handles balance instead
 _lr_class_weight = CLASS_WEIGHT if balance_strategy == "class_weight" else None
+
+
+# -----------------------------------------------------------------------------
+# True-rate feature setup
+# -----------------------------------------------------------------------------
+# Maps feat_name → source column in df_processed (string categories for groupby).
+# Placeholder values (true_rate_fallback) fill X_trainval / X_holdout now;
+# real per-fold values are written inside the CV loop and the final fit.
+_tr_group_cols: dict[str, str] = {}
+if enable_true_rate_features:
+    _candidates = {
+        "fe_speaker_true_rate": ["speaker_grouped", "speaker_clean"],
+        "fe_subject_true_rate": ["subject_grouped", "subject_primary", "subject_clean"],
+        "fe_party_true_rate":   ["party_affiliation_grouped", "party_affiliation_clean"],
+    }
+    for _feat, _src_cols in _candidates.items():
+        for _col in _src_cols:
+            if _col in df_processed.columns:
+                _tr_group_cols[_feat] = _col
+                break
+
+    X_trainval = X_trainval.copy()
+    X_holdout  = X_holdout.copy()
+    for _feat in _tr_group_cols:
+        X_trainval[_feat] = true_rate_fallback
+        X_holdout[_feat]  = true_rate_fallback
+
+    # Positionally-indexed group metadata aligned to X_trainval / X_holdout
+    _grp_trainval = pd.DataFrame(
+        {col: df_processed[col].loc[X_trainval.index].values for col in _tr_group_cols.values()}
+    )
+    _grp_trainval["_label"] = y_trainval.values
+
+    _grp_holdout = pd.DataFrame(
+        {col: df_processed[col].loc[X_holdout.index].values for col in _tr_group_cols.values()}
+    )
+
+    print(f"  True-rate features  : {list(_tr_group_cols.keys())}")
+    print(f"  Source columns      : {list(_tr_group_cols.values())}")
 
 
 # -----------------------------------------------------------------------------
@@ -836,6 +880,8 @@ run = wandb.init(
         "fe_absolutist":           fe_add_absolutist_count,
         "fe_numeral":              fe_add_numeral_count,
         "fe_scale":                fe_scale,
+        "true_rate_features":      enable_true_rate_features,
+        "true_rate_cols":          list(_tr_group_cols.values()) if enable_true_rate_features else [],
     },
 )
 
@@ -851,10 +897,22 @@ oof_true  = np.zeros(len(X_trainval), dtype=int)
 
 for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval), 1):
     _fold_t = time()
+
+    X_fold_train_raw = X_trainval.iloc[train_idx].copy()
+    X_fold_val_raw   = X_trainval.iloc[val_idx].copy()
+
+    if enable_true_rate_features and _tr_group_cols:
+        _grp_tr = _grp_trainval.iloc[train_idx]
+        _grp_vl = _grp_trainval.iloc[val_idx]
+        for _feat, _src_col in _tr_group_cols.items():
+            _rate_map = _grp_tr.groupby(_src_col)["_label"].mean()
+            X_fold_train_raw[_feat] = _grp_tr[_src_col].map(_rate_map).fillna(true_rate_fallback).values
+            X_fold_val_raw[_feat]   = _grp_vl[_src_col].map(_rate_map).fillna(true_rate_fallback).values
+
     X_fold_train, y_fold_train = rebalance_training_data(
-        X_trainval.iloc[train_idx], y_trainval.iloc[train_idx], balance_strategy
+        X_fold_train_raw, y_trainval.iloc[train_idx], balance_strategy
     )
-    X_fold_val = X_trainval.iloc[val_idx]
+    X_fold_val = X_fold_val_raw
     y_fold_val  = y_trainval.iloc[val_idx]
 
     fold_model = LogisticRegression(
@@ -973,7 +1031,17 @@ if enable_threshold_tuning:
 # -----------------------------------------------------------------------------
 print(f"[SECTION] Fitting final model on full train/val set  [{_now()}]")
 _t0 = time()
-X_fit, y_fit = rebalance_training_data(X_trainval, y_trainval, balance_strategy)
+
+_final_rate_maps: dict[str, dict] = {}
+X_trainval_final = X_trainval.copy()
+if enable_true_rate_features and _tr_group_cols:
+    for _feat, _src_col in _tr_group_cols.items():
+        _rate_map = _grp_trainval.groupby(_src_col)["_label"].mean()
+        X_trainval_final[_feat] = _grp_trainval[_src_col].map(_rate_map).fillna(true_rate_fallback).values
+        X_holdout[_feat]        = _grp_holdout[_src_col].map(_rate_map).fillna(true_rate_fallback).values
+        _final_rate_maps[_feat] = _rate_map.to_dict()
+
+X_fit, y_fit = rebalance_training_data(X_trainval_final, y_trainval, balance_strategy)
 model = LogisticRegression(
     solver="liblinear",
     C=C_VALUE,
@@ -1047,7 +1115,7 @@ for i in range(2):
         axes[2].text(j, i, str(cm[i, j]), ha="center", va="center", color="black")
 fig.colorbar(im, ax=axes[2])
 plt.tight_layout()
-plt.show()
+# plt.show()
 
 
 # -----------------------------------------------------------------------------
@@ -1101,7 +1169,7 @@ print("[SECTION] Saving model")
 saved_paths = save_model(
     model_pipeline=model,
     preprocessing_options=options,
-    feature_names=X_trainval.columns.tolist(),
+    feature_names=X_trainval_final.columns.tolist(),
     project_root=project_root,
     model_name=model_name,
 )
@@ -1145,6 +1213,15 @@ if statement_vectorizer_type != "none":
 _threshold_path = _model_dir / f"{model_name}-threshold.joblib"
 joblib.dump(THRESHOLD, _threshold_path)
 print(f"  Threshold saved: {_threshold_path}  (value: {THRESHOLD:.2f})")
+
+# Save true-rate maps so kaggle-modulo.py can apply them to test data.
+if enable_true_rate_features and _tr_group_cols and _final_rate_maps:
+    _rate_maps_path = _model_dir / f"{model_name}-true-rate-maps.joblib"
+    joblib.dump(
+        {"rate_maps": _final_rate_maps, "group_cols": _tr_group_cols, "fallback": true_rate_fallback},
+        _rate_maps_path,
+    )
+    print(f"  True-rate maps saved: {_rate_maps_path}  ({len(_final_rate_maps)} features)")
 
 print(f"\n[DONE] Total script time: {time()-_script_start:.1f}s  [{_now()}]")
 

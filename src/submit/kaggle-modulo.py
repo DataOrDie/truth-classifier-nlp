@@ -69,10 +69,33 @@ def generate_submission_csv(
     # Test data has no label column — skip the label preprocessing step entirely.
     options.label_option = "skip"
 
+    # Load true-rate maps (speaker / subject / party historical false-claim rates).
+    rate_maps_path = model_dir / f"{model_name}-true-rate-maps.joblib"
+    _true_rate_artifacts = None
+    if rate_maps_path.exists():
+        _true_rate_artifacts = joblib.load(rate_maps_path)
+        if verbose:
+            print(f"[INFO] True-rate maps loaded: {list(_true_rate_artifacts['rate_maps'].keys())}")
+
     if verbose:
         print("[SECTION] Preprocessing test data")
 
     df_test_processed = preprocess_one_step(df_test, options=options)
+
+    # Apply true-rate maps: look up each test row's group in the training-set rate table.
+    if _true_rate_artifacts is not None:
+        _rate_maps  = _true_rate_artifacts["rate_maps"]
+        _group_cols = _true_rate_artifacts["group_cols"]
+        _fallback   = _true_rate_artifacts["fallback"]
+        for _feat, _src_col in _group_cols.items():
+            if _src_col in df_test_processed.columns:
+                df_test_processed[_feat] = (
+                    df_test_processed[_src_col].map(_rate_maps[_feat]).fillna(_fallback)
+                )
+            else:
+                df_test_processed[_feat] = _fallback
+                if verbose:
+                    print(f"  [WARNING] Source column '{_src_col}' not in test — using fallback {_fallback}")
 
     if verbose:
         print(f"  Processed shape: {df_test_processed.shape}")
