@@ -1,14 +1,29 @@
-"""Feature sweep over all speaker.py preprocessing option combinations.
+"""Feature sweep over all party_affiliation.py preprocessing option combinations.
 
 Speed strategy:
-  - Statement TF-IDF + lemmatization (the expensive part) is precomputed ONCE.
-  - Subject features (recommended config) are also precomputed in the base pass.
-  - Each iteration only reruns the speaker module (cheap: frequency/groupby).
+  - Statement TF-IDF + lemmatization is precomputed ONCE.
+  - Subject, speaker, and speaker_job (best config) are also in the base pass.
+  - Each iteration only reruns the party_affiliation module (cheap: frequency/groupby).
   - 3-fold CV during the sweep; holdout evaluated only for the winning config.
   - liblinear solver + lower max_iter for faster ranking fits.
 
-One speaker option is excluded:
-  - speaker_add_speaker_primary_true_rate → target-encoding leakage risk
+One party_affiliation option is excluded:
+  - party_affiliation_add_party_primary_true_rate → target-encoding leakage risk
+
+  Best party_affiliation config  (cv_mean_macro_f1=0.5988):
+  party_affiliation_add_frequency: True
+  party_affiliation_add_is_rare: True
+  party_affiliation_add_grouped_party: True
+  party_affiliation_add_length_features: True
+  party_affiliation_add_slash_flag: True
+  party_affiliation_add_ampersand_flag: True
+  party_affiliation_add_comma_flag: False
+  party_affiliation_add_parentheses_flag: True
+  party_affiliation_add_token_count: True
+  party_affiliation_add_is_major_party: True
+  party_affiliation_add_is_institutional: True
+  party_affiliation_scale: standardize
+  
 """
 
 from itertools import product
@@ -67,8 +82,8 @@ print(f"Loaded {len(df):,} rows")
 
 # =============================================================================
 # BASE CONFIG VARIABLES
-# Statement, subject, party, and FE stay fixed — computed ONCE.
-# Speaker options are left at defaults (no features added in the base pass).
+# Statement, subject, speaker, and speaker_job stay fixed — computed ONCE.
+# Party_affiliation options are left at defaults (no features added in base pass).
 # =============================================================================
 
 # --- Statement ---
@@ -82,15 +97,41 @@ statement_keep_negations          = True
 statement_add_lexical_features    = True
 statement_scale                   = "standardize"
 
-# --- Subject (fixed recommended config) ---
-subject_add_primary           = True
-subject_add_subject_frequency = True
-subject_add_topic_count       = True
-subject_scale                 = "standardize"
+# --- Subject (best config: cv_mean_macro_f1=0.5999, holdout_macro_f1=0.6036) ---
+subject_add_primary              = True
+subject_primary_strategy         = "most_frequent"
+subject_add_topic_count          = True
+subject_add_multiple_topics_flag = False
+subject_add_length_features      = False
+subject_add_subject_frequency    = False
+subject_add_subject_is_rare      = True
+subject_add_grouped_primary      = True
+subject_scale                    = "standardize"
 
-# --- Party ---
-party_affiliation_add_is_major_party = True
-party_affiliation_add_frequency      = True
+# --- Speaker (best config: cv_mean_macro_f1=0.5915) ---
+speaker_add_frequency       = True
+speaker_add_is_rare         = True
+speaker_add_grouped_speaker = True
+speaker_add_length_features = False
+speaker_add_title_flag      = True
+speaker_add_comma_flag      = True
+speaker_add_period_flag     = False
+speaker_add_token_count     = False
+speaker_scale               = "standardize"
+speaker_group_rare          = True
+
+# --- Speaker_job (best config: cv_mean_macro_f1=0.5923) ---
+speaker_job_add_frequency       = False
+speaker_job_add_is_rare         = False
+speaker_job_add_grouped_job     = False
+speaker_job_add_length_features = True
+speaker_job_add_title_flag      = True
+speaker_job_add_comma_flag      = True
+speaker_job_add_slash_flag      = False
+speaker_job_add_ampersand_flag  = False
+speaker_job_add_token_count     = False
+speaker_job_scale               = "none"
+speaker_job_group_rare          = False  # must match add_grouped_job
 
 # --- Feature engineering ---
 fe_add_negation_count   = True
@@ -102,10 +143,10 @@ fe_scale                = "standardize"
 
 # =============================================================================
 # STEP 1 — PRECOMPUTE BASE FEATURES (runs once)
-# Speaker options are at defaults here (only speaker_clean is produced).
+# Party_affiliation options are at defaults here (only party_affiliation_clean is produced).
 # =============================================================================
 
-print("\n[SECTION] Precomputing base features (statement TF-IDF + subject + party + FE)")
+print("\n[SECTION] Precomputing base features (statement + subject + speaker + speaker_job + FE)")
 base_options = OneStepOptions(
     # Statement — full expensive config
     statement_vectorizer_type=statement_vectorizer_type,
@@ -119,13 +160,38 @@ base_options = OneStepOptions(
     statement_scale=statement_scale,
     # Subject
     subject_add_primary=subject_add_primary,
-    subject_add_subject_frequency=subject_add_subject_frequency,
+    subject_primary_strategy=subject_primary_strategy,
     subject_add_topic_count=subject_add_topic_count,
+    subject_add_multiple_topics_flag=subject_add_multiple_topics_flag,
+    subject_add_length_features=subject_add_length_features,
+    subject_add_subject_frequency=subject_add_subject_frequency,
+    subject_add_subject_is_rare=subject_add_subject_is_rare,
+    subject_add_grouped_primary=subject_add_grouped_primary,
     subject_scale=subject_scale,
-    # Speaker — defaults only (no add_* flags), so no speaker features are added
-    # Party
-    party_affiliation_add_is_major_party=party_affiliation_add_is_major_party,
-    party_affiliation_add_frequency=party_affiliation_add_frequency,
+    # Speaker
+    speaker_add_frequency=speaker_add_frequency,
+    speaker_add_is_rare=speaker_add_is_rare,
+    speaker_add_grouped_speaker=speaker_add_grouped_speaker,
+    speaker_add_length_features=speaker_add_length_features,
+    speaker_add_title_flag=speaker_add_title_flag,
+    speaker_add_comma_flag=speaker_add_comma_flag,
+    speaker_add_period_flag=speaker_add_period_flag,
+    speaker_add_token_count=speaker_add_token_count,
+    speaker_group_rare=speaker_group_rare,
+    speaker_scale=speaker_scale,
+    # Speaker_job — best config from sweep
+    speaker_job_add_frequency=speaker_job_add_frequency,
+    speaker_job_add_is_rare=speaker_job_add_is_rare,
+    speaker_job_add_grouped_job=speaker_job_add_grouped_job,
+    speaker_job_add_length_features=speaker_job_add_length_features,
+    speaker_job_add_title_flag=speaker_job_add_title_flag,
+    speaker_job_add_comma_flag=speaker_job_add_comma_flag,
+    speaker_job_add_slash_flag=speaker_job_add_slash_flag,
+    speaker_job_add_ampersand_flag=speaker_job_add_ampersand_flag,
+    speaker_job_add_token_count=speaker_job_add_token_count,
+    speaker_job_scale=speaker_job_scale,
+    speaker_job_group_rare=speaker_job_group_rare,
+    # Party_affiliation — defaults only (no add_* flags), so no party features are added
     # Feature engineering
     fe_add_negation_count=fe_add_negation_count,
     fe_add_hedge_count=fe_add_hedge_count,
@@ -143,30 +209,34 @@ print(f"Base feature matrix: {X_base.shape[0]:,} rows × {X_base.shape[1]:,} fea
 
 
 # =============================================================================
-# SPEAKER OPTION GRID
+# PARTY AFFILIATION OPTION GRID
 # =============================================================================
 
-SPEAKER_GRID = {
-    "speaker_add_frequency":       [False, True],
-    "speaker_add_is_rare":         [False, True],
-    "speaker_add_grouped_speaker": [False, True],
-    "speaker_add_length_features": [False, True],
-    "speaker_add_title_flag":      [False, True],
-    "speaker_add_comma_flag":      [False, True],
-    "speaker_add_period_flag":     [False, True],
-    "speaker_add_token_count":     [False, True],
-    "speaker_scale":               ["none", "standardize"],
+PARTY_AF_GRID = {
+    "party_affiliation_add_frequency":         [False, True],
+    "party_affiliation_add_is_rare":           [False, True],
+    "party_affiliation_add_grouped_party":     [False, True],
+    "party_affiliation_add_length_features":   [False, True],
+    "party_affiliation_add_slash_flag":        [False, True],
+    "party_affiliation_add_ampersand_flag":    [False, True],
+    "party_affiliation_add_comma_flag":        [False, True],
+    "party_affiliation_add_parentheses_flag":  [False, True],
+    "party_affiliation_add_token_count":       [False, True],
+    "party_affiliation_add_is_major_party":    [False, True],
+    "party_affiliation_add_is_institutional":  [False, True],
+    "party_affiliation_scale":                 ["none", "standardize"],
 }
 
 # Set to an integer to cap the number of runs. None = run all.
 MAX_RUNS = None
 
 
-def generate_speaker_configs():
-    keys, seen, result = list(SPEAKER_GRID.keys()), set(), []
-    for values in product(*SPEAKER_GRID.values()):
+def generate_party_af_configs():
+    keys, seen, result = list(PARTY_AF_GRID.keys()), set(), []
+    for values in product(*PARTY_AF_GRID.values()):
         cfg = dict(zip(keys, values))
-        cfg["speaker_group_rare"] = cfg["speaker_add_grouped_speaker"]
+        # party_affiliation_group_rare must be True whenever add_grouped_party=True.
+        cfg["party_affiliation_group_rare"] = cfg["party_affiliation_add_grouped_party"]
         frozen = tuple(sorted(cfg.items()))
         if frozen not in seen:
             seen.add(frozen)
@@ -174,12 +244,12 @@ def generate_speaker_configs():
     return result
 
 
-speaker_configs = generate_speaker_configs()
+party_af_configs = generate_party_af_configs()
 if MAX_RUNS is not None:
-    speaker_configs = speaker_configs[:MAX_RUNS]
+    party_af_configs = party_af_configs[:MAX_RUNS]
 
-print(f"\nTotal speaker configurations to run: {len(speaker_configs)}")
-print("(Adjust SPEAKER_GRID or set MAX_RUNS to limit)\n")
+print(f"\nTotal party_affiliation configurations to run: {len(party_af_configs)}")
+print("(Adjust PARTY_AF_GRID or set MAX_RUNS to limit)\n")
 
 
 # =============================================================================
@@ -194,19 +264,19 @@ CV_FOLDS     = 3
 
 # =============================================================================
 # STEP 2 — SWEEP LOOP
-# Each iteration only reruns the speaker module (no TF-IDF, no lemmatization).
+# Each iteration only reruns the party_affiliation module (no TF-IDF, no lemmatization).
 # =============================================================================
 
 all_results = []
 
-for run_idx, spkr_cfg in enumerate(speaker_configs, 1):
+for run_idx, party_cfg in enumerate(party_af_configs, 1):
     print(f"\n{'='*60}")
-    print(f"Run {run_idx} / {len(speaker_configs)}")
-    print(f"Speaker config: {spkr_cfg}")
+    print(f"Run {run_idx} / {len(party_af_configs)}")
+    print(f"Party_affiliation config: {party_cfg}")
     print("="*60)
 
     # -------------------------------------------------------------------------
-    # Fast speaker-only preprocessing pass
+    # Fast party_affiliation-only preprocessing pass
     # Statement module runs basic cleaning only (vectorizer + lemmatizer off).
     # All other modules run at defaults — no extra columns added.
     # -------------------------------------------------------------------------
@@ -216,10 +286,9 @@ for run_idx, spkr_cfg in enumerate(speaker_configs, 1):
         statement_lemmatizer="none",
         statement_stopword_removal=False,
         statement_add_lexical_features=False,
-        # Subject: defaults only (already in base features)
-        # Speaker: current config under test
-        **spkr_cfg,
-        # Party / FE: defaults only (already in base features)
+        # Subject / speaker / speaker_job / FE: defaults only (already in base features)
+        # Party_affiliation: current config under test
+        **party_cfg,
     )
     df_iter  = preprocess_one_step(df, options=iter_options)
     X_iter   = df_iter.drop(columns=["label"], errors="ignore").select_dtypes(exclude="object")
@@ -231,7 +300,7 @@ for run_idx, spkr_cfg in enumerate(speaker_configs, 1):
         X = X_base.copy()
 
     y = y_all
-    print(f"Features: {X_base.shape[1]} base + {len(new_cols)} speaker = {X.shape[1]} total")
+    print(f"Features: {X_base.shape[1]} base + {len(new_cols)} party_affiliation = {X.shape[1]} total")
 
     # -------------------------------------------------------------------------
     # Train / holdout split
@@ -244,7 +313,7 @@ for run_idx, spkr_cfg in enumerate(speaker_configs, 1):
     # W&B run
     # -------------------------------------------------------------------------
     wandb_run = wandb.init(
-        project="truth-classifier-lr-speaker-sweep",
+        project="truth-classifier-lr-party-sweep",
         config={
             "model":      "LogisticRegression",
             "solver":     "liblinear",
@@ -252,7 +321,7 @@ for run_idx, spkr_cfg in enumerate(speaker_configs, 1):
             "max_iter":   MAX_ITER,
             "cv_folds":   CV_FOLDS,
             "n_features": int(X_trainval.shape[1]),
-            **{f"spkr__{k}": str(v) for k, v in spkr_cfg.items()},
+            **{f"party__{k}": str(v) for k, v in party_cfg.items()},
         },
         reinit=True,
     )
@@ -293,8 +362,8 @@ for run_idx, spkr_cfg in enumerate(speaker_configs, 1):
         "run":              run_idx,
         "cv_mean_macro_f1": cv_mean,
         "cv_std_macro_f1":  cv_std,
-        "n_speaker_cols":   len(new_cols),
-        **spkr_cfg,
+        "n_party_cols":     len(new_cols),
+        **party_cfg,
     })
 
     sleep(1)
@@ -314,22 +383,22 @@ pd.set_option("display.width", 200)
 print(results_df.to_string(index=False))
 
 best_cfg = results_df.iloc[0]
-print(f"\nBest speaker config  (cv_mean_macro_f1={best_cfg['cv_mean_macro_f1']:.4f}):")
-for k in SPEAKER_GRID:
+print(f"\nBest party_affiliation config  (cv_mean_macro_f1={best_cfg['cv_mean_macro_f1']:.4f}):")
+for k in PARTY_AF_GRID:
     print(f"  {k}: {best_cfg[k]}")
 
 
 # --- Reconstruct best feature matrix and evaluate on holdout ---
 print("\n[SECTION] Evaluating best config on holdout set")
 
-best_spkr_cfg = {k: best_cfg[k] for k in list(SPEAKER_GRID.keys()) + ["speaker_group_rare"]}
+best_party_cfg = {k: best_cfg[k] for k in list(PARTY_AF_GRID.keys()) + ["party_affiliation_group_rare"]}
 
 iter_options = OneStepOptions(
     statement_vectorizer_type="none",
     statement_lemmatizer="none",
     statement_stopword_removal=False,
     statement_add_lexical_features=False,
-    **best_spkr_cfg,
+    **best_party_cfg,
 )
 df_best  = preprocess_one_step(df, options=iter_options)
 X_best   = df_best.drop(columns=["label"], errors="ignore").select_dtypes(exclude="object")

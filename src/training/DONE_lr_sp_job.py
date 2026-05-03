@@ -1,15 +1,31 @@
-"""Feature sweep over all subject.py preprocessing option combinations.
+"""Feature sweep over all speaker_job.py preprocessing option combinations.
 
 Speed strategy:
-  - Statement TF-IDF + lemmatization (the expensive part) is precomputed ONCE.
-  - Each iteration only reruns the subject module (cheap: groupby/counts).
+  - Statement TF-IDF + lemmatization is precomputed ONCE.
+  - Subject and speaker features (recommended configs) are also in the base pass.
+  - Each iteration only reruns the speaker_job module (cheap: frequency/groupby).
   - 3-fold CV during the sweep; holdout evaluated only for the winning config.
   - liblinear solver + lower max_iter for faster ranking fits.
 
-Two subject options are excluded:
-  - subject_add_topic_list              → raw Python list, not a numeric column
-  - subject_add_subject_primary_true_rate → target-encoding leakage risk
+One speaker_job option is excluded:
+  - speaker_job_add_job_primary_true_rate → target-encoding leakage risk
+
+------------------------------------------------------------------------------
+
+Best speaker_job config  (cv_mean_macro_f1=0.5923):
+  speaker_job_add_frequency: False
+  speaker_job_add_is_rare: False
+  speaker_job_add_grouped_job: False
+  speaker_job_add_length_features: True
+  speaker_job_add_title_flag: True
+  speaker_job_add_comma_flag: True
+  speaker_job_add_slash_flag: False
+  speaker_job_add_ampersand_flag: False
+  speaker_job_add_token_count: False
+  speaker_job_scale: none
+
 """
+
 
 from itertools import product
 from pathlib import Path
@@ -67,8 +83,8 @@ print(f"Loaded {len(df):,} rows")
 
 # =============================================================================
 # BASE CONFIG VARIABLES
-# Statement, speaker, party, and FE stay fixed — these are computed ONCE.
-# Subject options are left at defaults (no features added in this pass).
+# Statement, subject, speaker, party, and FE stay fixed — computed ONCE.
+# Speaker_job options are left at defaults (no features added in the base pass).
 # =============================================================================
 
 # --- Statement ---
@@ -82,11 +98,40 @@ statement_keep_negations          = True
 statement_add_lexical_features    = True
 statement_scale                   = "standardize"
 
+# --- Subject (fixed recommended config) ---
+# subject_add_primary           = True
+# subject_add_subject_frequency = True
+# subject_add_topic_count       = True
+# subject_scale                 = "standardize"
+
+#Best subject config  (cv_mean_macro_f1=0.5999, holdout_macro_f1=0.6036):
+subject_add_primary = True
+subject_primary_strategy = "most_frequent"
+subject_add_topic_count = True
+subject_add_multiple_topics_flag = False
+subject_add_length_features = False
+subject_add_subject_frequency = False
+subject_add_subject_is_rare = True
+subject_add_grouped_primary = True
+subject_scale = "standardize"
+
 # --- Speaker (fixed recommended config) ---
-speaker_add_frequency       = True
-speaker_add_grouped_speaker = True
-speaker_group_rare          = True
-speaker_scale               = "standardize"
+# speaker_add_frequency       = True
+# speaker_add_grouped_speaker = True
+# speaker_group_rare          = True
+# speaker_scale               = "standardize"
+
+# Best speaker config  (cv_mean_macro_f1=0.5915):
+speaker_add_frequency=True
+speaker_add_is_rare=True
+speaker_add_grouped_speaker=True
+speaker_add_length_features=False
+speaker_add_title_flag=True
+speaker_add_comma_flag=True
+speaker_add_period_flag=False
+speaker_add_token_count=False
+speaker_scale="standardize"
+speaker_group_rare=True
 
 # --- Party ---
 party_affiliation_add_is_major_party = True
@@ -102,10 +147,10 @@ fe_scale                = "standardize"
 
 # =============================================================================
 # STEP 1 — PRECOMPUTE BASE FEATURES (runs once)
-# Subject options are at defaults here (only subject_clean is produced).
+# Speaker_job options are at defaults here (only speaker_job_clean is produced).
 # =============================================================================
 
-print("\n[SECTION] Precomputing base features (statement TF-IDF + speaker + party + FE)")
+print("\n[SECTION] Precomputing base features (statement + subject + speaker + party + FE)")
 base_options = OneStepOptions(
     # Statement — full expensive config
     statement_vectorizer_type=statement_vectorizer_type,
@@ -117,12 +162,28 @@ base_options = OneStepOptions(
     statement_keep_negations=statement_keep_negations,
     statement_add_lexical_features=statement_add_lexical_features,
     statement_scale=statement_scale,
-    # Subject — defaults only (no add_* flags), so no subject features are added
+    # Subject
+    subject_add_primary=subject_add_primary,
+    subject_primary_strategy=subject_primary_strategy,
+    subject_add_topic_count=subject_add_topic_count,
+    subject_add_multiple_topics_flag=subject_add_multiple_topics_flag,
+    subject_add_length_features=subject_add_length_features,
+    subject_add_subject_frequency=subject_add_subject_frequency,
+    subject_add_subject_is_rare=subject_add_subject_is_rare,
+    subject_add_grouped_primary=subject_add_grouped_primary,
+    subject_scale=subject_scale,
     # Speaker
     speaker_add_frequency=speaker_add_frequency,
+    speaker_add_is_rare=speaker_add_is_rare,
     speaker_add_grouped_speaker=speaker_add_grouped_speaker,
+    speaker_add_length_features=speaker_add_length_features,
+    speaker_add_title_flag=speaker_add_title_flag,
+    speaker_add_comma_flag=speaker_add_comma_flag,
+    speaker_add_period_flag=speaker_add_period_flag,
+    speaker_add_token_count=speaker_add_token_count,
     speaker_group_rare=speaker_group_rare,
     speaker_scale=speaker_scale,
+    # Speaker_job — defaults only (no add_* flags), so no job features are added
     # Party
     party_affiliation_add_is_major_party=party_affiliation_add_is_major_party,
     party_affiliation_add_frequency=party_affiliation_add_frequency,
@@ -134,44 +195,41 @@ base_options = OneStepOptions(
     fe_scale=fe_scale,
 )
 
-df_base    = preprocess_one_step(df, options=base_options)
-y_all      = df_base["label"]
-X_base     = df_base.drop(columns=["label"]).select_dtypes(exclude="object")
-base_cols  = set(X_base.columns)
+df_base   = preprocess_one_step(df, options=base_options)
+y_all     = df_base["label"]
+X_base    = df_base.drop(columns=["label"]).select_dtypes(exclude="object")
+base_cols = set(X_base.columns)
 
 print(f"Base feature matrix: {X_base.shape[0]:,} rows × {X_base.shape[1]:,} features")
 
 
 # =============================================================================
-# SUBJECT OPTION GRID
+# SPEAKER_JOB OPTION GRID
 # =============================================================================
 
-SUBJECT_GRID = {
-    "subject_add_primary":              [False, True],
-    "subject_primary_strategy":         ["first", "most_frequent"],
-    "subject_add_topic_count":          [False, True],
-    "subject_add_multiple_topics_flag": [False, True],
-    "subject_add_length_features":      [False, True],
-    "subject_add_subject_frequency":    [False, True],
-    "subject_add_subject_is_rare":      [False, True],
-    "subject_add_grouped_primary":      [False, True],
-    "subject_scale":                    ["none", "standardize"],
+SPEAKER_JOB_GRID = {
+    "speaker_job_add_frequency":       [False, True],
+    "speaker_job_add_is_rare":         [False, True],
+    "speaker_job_add_grouped_job":     [False, True],
+    "speaker_job_add_length_features": [False, True],
+    "speaker_job_add_title_flag":      [False, True],
+    "speaker_job_add_comma_flag":      [False, True],
+    "speaker_job_add_slash_flag":      [False, True],
+    "speaker_job_add_ampersand_flag":  [False, True],
+    "speaker_job_add_token_count":     [False, True],
+    "speaker_job_scale":               ["none", "standardize"],
 }
 
 # Set to an integer to cap the number of runs. None = run all.
 MAX_RUNS = None
 
 
-def generate_subject_configs():
-    keys, seen, result = list(SUBJECT_GRID.keys()), set(), []
-    for values in product(*SUBJECT_GRID.values()):
+def generate_speaker_job_configs():
+    keys, seen, result = list(SPEAKER_JOB_GRID.keys()), set(), []
+    for values in product(*SPEAKER_JOB_GRID.values()):
         cfg = dict(zip(keys, values))
-        if not cfg["subject_add_primary"]:
-            cfg["subject_primary_strategy"]      = "first"
-            cfg["subject_add_subject_frequency"] = False
-            cfg["subject_add_subject_is_rare"]   = False
-            cfg["subject_add_grouped_primary"]   = False
-        cfg["subject_group_rare"] = cfg["subject_add_grouped_primary"]
+        # speaker_job_group_rare must be True whenever speaker_job_add_grouped_job=True.
+        cfg["speaker_job_group_rare"] = cfg["speaker_job_add_grouped_job"]
         frozen = tuple(sorted(cfg.items()))
         if frozen not in seen:
             seen.add(frozen)
@@ -179,41 +237,39 @@ def generate_subject_configs():
     return result
 
 
-subject_configs = generate_subject_configs()
+speaker_job_configs = generate_speaker_job_configs()
 if MAX_RUNS is not None:
-    subject_configs = subject_configs[:MAX_RUNS]
+    speaker_job_configs = speaker_job_configs[:MAX_RUNS]
 
-print(f"\nTotal subject configurations to run: {len(subject_configs)}")
-print("(Adjust SUBJECT_GRID or set MAX_RUNS to limit)\n")
+print(f"\nTotal speaker_job configurations to run: {len(speaker_job_configs)}")
+print("(Adjust SPEAKER_JOB_GRID or set MAX_RUNS to limit)\n")
 
 
 # =============================================================================
 # MODEL HYPERPARAMETERS
-# liblinear is faster than lbfgs for binary classification.
-# max_iter=300 is enough for ranking; tune properly after feature selection.
 # =============================================================================
 
 CLASS_WEIGHT = {0: 1.42, 1: 0.77}
 C_VALUE      = 1.0
 MAX_ITER     = 300
-CV_FOLDS     = 3   # 3-fold during the sweep; use 5-fold for final tuning
+CV_FOLDS     = 3
 
 
 # =============================================================================
 # STEP 2 — SWEEP LOOP
-# Each iteration only reruns the subject module (no TF-IDF, no lemmatization).
+# Each iteration only reruns the speaker_job module (no TF-IDF, no lemmatization).
 # =============================================================================
 
 all_results = []
 
-for run_idx, subj_cfg in enumerate(subject_configs, 1):
+for run_idx, job_cfg in enumerate(speaker_job_configs, 1):
     print(f"\n{'='*60}")
-    print(f"Run {run_idx} / {len(subject_configs)}")
-    print(f"Subject config: {subj_cfg}")
+    print(f"Run {run_idx} / {len(speaker_job_configs)}")
+    print(f"Speaker_job config: {job_cfg}")
     print("="*60)
 
     # -------------------------------------------------------------------------
-    # Fast subject-only preprocessing pass
+    # Fast speaker_job-only preprocessing pass
     # Statement module runs basic cleaning only (vectorizer + lemmatizer off).
     # All other modules run at defaults — no extra columns added.
     # -------------------------------------------------------------------------
@@ -223,25 +279,24 @@ for run_idx, subj_cfg in enumerate(subject_configs, 1):
         statement_lemmatizer="none",
         statement_stopword_removal=False,
         statement_add_lexical_features=False,
-        # Subject: current config under test
-        **subj_cfg,
-        # Speaker / party / FE: defaults only (no add_* flags) — already in base
+        # Subject / speaker / party / FE: defaults only (already in base features)
+        # Speaker_job: current config under test
+        **job_cfg,
     )
-    df_iter   = preprocess_one_step(df, options=iter_options)
-    X_iter    = df_iter.drop(columns=["label"], errors="ignore").select_dtypes(exclude="object")
-    new_cols  = [c for c in X_iter.columns if c not in base_cols]
+    df_iter  = preprocess_one_step(df, options=iter_options)
+    X_iter   = df_iter.drop(columns=["label"], errors="ignore").select_dtypes(exclude="object")
+    new_cols = [c for c in X_iter.columns if c not in base_cols]
 
-    # Combine base features with the new subject-specific columns
     if new_cols:
         X = pd.concat([X_base, X_iter[new_cols]], axis=1)
     else:
         X = X_base.copy()
 
     y = y_all
-    print(f"Features: {X_base.shape[1]} base + {len(new_cols)} subject = {X.shape[1]} total")
+    print(f"Features: {X_base.shape[1]} base + {len(new_cols)} speaker_job = {X.shape[1]} total")
 
     # -------------------------------------------------------------------------
-    # Train / holdout split (same random_state every run for fair comparison)
+    # Train / holdout split
     # -------------------------------------------------------------------------
     X_trainval, X_holdout, y_trainval, y_holdout = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
@@ -251,21 +306,21 @@ for run_idx, subj_cfg in enumerate(subject_configs, 1):
     # W&B run
     # -------------------------------------------------------------------------
     wandb_run = wandb.init(
-        project="truth-classifier-lr-subject-sweep",
+        project="truth-classifier-lr-spjob-sweep",
         config={
-            "model":       "LogisticRegression",
-            "solver":      "liblinear",
-            "C":           C_VALUE,
-            "max_iter":    MAX_ITER,
-            "cv_folds":    CV_FOLDS,
-            "n_features":  int(X_trainval.shape[1]),
-            **{f"subj__{k}": str(v) for k, v in subj_cfg.items()},
+            "model":      "LogisticRegression",
+            "solver":     "liblinear",
+            "C":          C_VALUE,
+            "max_iter":   MAX_ITER,
+            "cv_folds":   CV_FOLDS,
+            "n_features": int(X_trainval.shape[1]),
+            **{f"job__{k}": str(v) for k, v in job_cfg.items()},
         },
         reinit=True,
     )
 
     # -------------------------------------------------------------------------
-    # 3-fold CV — only CV score used during sweep; no holdout here
+    # 3-fold CV
     # -------------------------------------------------------------------------
     skf = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=42)
     fold_macro_f1s = []
@@ -300,8 +355,8 @@ for run_idx, subj_cfg in enumerate(subject_configs, 1):
         "run":              run_idx,
         "cv_mean_macro_f1": cv_mean,
         "cv_std_macro_f1":  cv_std,
-        "n_subject_cols":   len(new_cols),
-        **subj_cfg,
+        "n_job_cols":       len(new_cols),
+        **job_cfg,
     })
 
     sleep(1)
@@ -321,22 +376,22 @@ pd.set_option("display.width", 200)
 print(results_df.to_string(index=False))
 
 best_cfg = results_df.iloc[0]
-print(f"\nBest subject config  (cv_mean_macro_f1={best_cfg['cv_mean_macro_f1']:.4f}):")
-for k in SUBJECT_GRID:
+print(f"\nBest speaker_job config  (cv_mean_macro_f1={best_cfg['cv_mean_macro_f1']:.4f}):")
+for k in SPEAKER_JOB_GRID:
     print(f"  {k}: {best_cfg[k]}")
 
 
 # --- Reconstruct best feature matrix and evaluate on holdout ---
 print("\n[SECTION] Evaluating best config on holdout set")
 
-best_subj_cfg = {k: best_cfg[k] for k in list(SUBJECT_GRID.keys()) + ["subject_group_rare"]}
+best_job_cfg = {k: best_cfg[k] for k in list(SPEAKER_JOB_GRID.keys()) + ["speaker_job_group_rare"]}
 
 iter_options = OneStepOptions(
     statement_vectorizer_type="none",
     statement_lemmatizer="none",
     statement_stopword_removal=False,
     statement_add_lexical_features=False,
-    **best_subj_cfg,
+    **best_job_cfg,
 )
 df_best  = preprocess_one_step(df, options=iter_options)
 X_best   = df_best.drop(columns=["label"], errors="ignore").select_dtypes(exclude="object")

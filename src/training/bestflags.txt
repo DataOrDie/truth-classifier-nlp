@@ -1,0 +1,103 @@
+Best subject config  (cv_mean_macro_f1=0.5999, holdout_macro_f1=0.6036):
+  subject_add_primary: True
+  subject_primary_strategy: most_frequent
+  subject_add_topic_count: True
+  subject_add_multiple_topics_flag: False
+  subject_add_length_features: False
+  subject_add_subject_frequency: False
+  subject_add_subject_is_rare: True
+  subject_add_grouped_primary: True
+  subject_scale: standardize
+
+Best speaker config  (cv_mean_macro_f1=0.5915):
+  speaker_add_frequency: True
+  speaker_add_is_rare: True
+  speaker_add_grouped_speaker: True
+  speaker_add_length_features: False
+  speaker_add_title_flag: True
+  speaker_add_comma_flag: True
+  speaker_add_period_flag: False
+  speaker_add_token_count: False
+  speaker_scale: standardize
+
+
+Best speaker_job config  (cv_mean_macro_f1=0.5923):
+  speaker_job_add_frequency: False
+  speaker_job_add_is_rare: False
+  speaker_job_add_grouped_job: False
+  speaker_job_add_length_features: True
+  speaker_job_add_title_flag: True
+  speaker_job_add_comma_flag: True
+  speaker_job_add_slash_flag: False
+  speaker_job_add_ampersand_flag: False
+  speaker_job_add_token_count: False
+  speaker_job_scale: none
+
+Best party_affiliation config  (cv_mean_macro_f1=0.5988):
+  party_affiliation_add_frequency: True
+  party_affiliation_add_is_rare: True
+  party_affiliation_add_grouped_party: True
+  party_affiliation_add_length_features: True
+  party_affiliation_add_slash_flag: True
+  party_affiliation_add_ampersand_flag: True
+  party_affiliation_add_comma_flag: False
+  party_affiliation_add_parentheses_flag: True
+  party_affiliation_add_token_count: True
+  party_affiliation_add_is_major_party: True
+  party_affiliation_add_is_institutional: True
+  party_affiliation_scale: standardize
+
+Best state config  (cv_mean_macro_f1=0.6087):
+  state_drop: False
+  state_add_is_us_state: True
+  state_add_frequency: False
+  state_add_is_rare: False
+  state_add_grouped_state: True
+  state_add_length_features: False
+  state_add_token_count: True
+  state_add_has_us_words: False
+  state_add_us_region: True
+  state_scale: none
+
+Options fixed for all runs (not swept):
+  statement_lower, remove_html, remove_urls, repair_polluted  → always True
+  statement_keep_negations                                     → always True
+  statement_vectorizer_min_df                                  → fixed at 2
+  statement_vectorizer_max_df                                  → fixed at 0.9
+  statement_remove_punctuation                                 → fixed at False
+  statement_replace_numbers                                    → fixed at False
+  statement_add_ner_features                                   → excluded (spaCy, very slow)
+  statement_add_spelling_errors                                → excluded (slow)
+  statement_add_pollution_features                             → excluded (low signal post-repair)
+  statement_add_rare_token_features                            → excluded (minor signal)
+  statement_vectorizer_type = "embeddings"                     → excluded (sentence-transformers, very slow)
+
+Best statement config  (cv_mean_macro_f1=0.6079):
+  statement_vectorizer_type: tfidf
+  statement_vectorizer_max_features: 5000
+  statement_stopword_removal: False
+  statement_stemmer: porter
+  statement_lemmatizer: none
+  statement_add_lexical_features: True
+  statement_scale: standardize
+
+Best FE config  (cv_mean_macro_f1=0.6086):
+  fe_add_speaker_subject: False
+  fe_add_speaker_party: False
+  fe_add_subject_party: False
+  fe_add_state_party: False
+  fe_add_proper_noun_count: False
+  fe_add_readability: True
+  fe_add_sentiment: True
+  fe_scale: standardize
+
+Fix to False — high-cardinality interactions, noise for linear models:                                                                
+  - fe_add_speaker_job_subject — 3-way combo, extremely high cardinality, frequency-encoding is mostly noise                            
+  - fe_add_speaker_statement_len_bucket — speaker has hundreds of unique values; the bucket info adds nothing LR can't get from the base
+   speaker frequency feature                                                                                                            
+                                                                                                                                        
+  Fix to True — established deception-detection signals, safe to always include:                                                      
+  - fe_add_negation_count
+  - fe_add_hedge_count
+  - fe_add_absolutist_count
+  - fe_add_numeral_count — specific numbers in political claims are a strong Politifact signal
