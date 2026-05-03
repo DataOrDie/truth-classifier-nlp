@@ -530,14 +530,4 @@ saved_paths = save_model(
     project_root=project_root,
     model_name="geom-svm",
 )
-
-# Yes, this is a meaningful shift in the direction you wanted.
-
-# You cut the predicted positive rate from 0.9949 to 0.7532, so the model is no longer approving almost everything. At the same time, ROC-AUC and PR-AUC stayed essentially flat, which is good: you changed the decision behavior without really degrading ranking quality. The tradeoff is exactly what we’d expect: precision went up, recall went down, and F1 dropped because the model is now more conservative.
-
-# What this means in practice is:
-
-# If your goal is to deny more loans, this is better than before.
-# If your goal is to improve raw classification balance, it’s a mixed tradeoff.
-# If you want even more denials, the next lever is usually threshold tuning, not just class weighting.
-# The bigger question is whether your “positive” class is approval. If so, this result says the model is approving fewer cases, which matches your goal. If you want, I can help you do the next step: sweep decision thresholds and pick one that hits a target approval/denial rate while keeping AUC stable.
+print(f"Saved model and artifacts to: {saved_paths}")

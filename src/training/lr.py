@@ -706,7 +706,7 @@ create_kaggle_csv = True
 
 # "class_weight"    → pass CLASS_WEIGHT to LogisticRegression (no resampling)
 # "oversample_reject" → upsample class 0 (true statements, minority) to match class 1
-balance_strategy  = "class_weight"
+balance_strategy  = "oversample_reject"  # "none" | "class_weight" | "oversample_reject"
 
 
 def rebalance_training_data(
