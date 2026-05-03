@@ -56,12 +56,17 @@ def generate_submission_csv(
 
     # Load fitted vectorizer and inject into options so test text is transformed
     # with the exact same vocabulary that was built on training data.
+    # SentenceTransformer (embeddings) is stateless — it encodes directly from the
+    # model name stored in options, so no saved vectorizer file is needed or used.
     vectorizer_path = model_dir / f"{model_name}-vectorizer.joblib"
-    if vectorizer_path.exists():
+    if options.statement_vectorizer_type != "embeddings" and vectorizer_path.exists():
         fitted_vec = joblib.load(vectorizer_path)
         options.statement_fitted_vectorizer = fitted_vec
         if verbose:
             print(f"[INFO] Vectorizer loaded  (vocab: {len(fitted_vec.vocabulary_):,})")
+    elif options.statement_vectorizer_type == "embeddings":
+        if verbose:
+            print(f"[INFO] Embeddings vectorizer — using model '{options.statement_embedding_model}' directly")
     else:
         if verbose:
             print("[WARNING] No saved vectorizer found — test text will be fit independently (vocabulary mismatch risk)")

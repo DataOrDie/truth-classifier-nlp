@@ -385,4 +385,61 @@ DID: True-rate features inside CV folds — highest impact for Politifact
   model must run). You can keep TF-IDF bigrams AND embeddings only by running preprocessing twice and concatenating — but that
   requires more restructuring.
 
+
+Holdout results:
+  roc_auc: 0.6652
+  pr_auc: 0.7746
+  macro_f1: 0.6025
+  f1: 0.6733
+  precision: 0.7474
+  recall: 0.6126
+  accuracy: 0.6151
+  mcc: 0.2223
+  balanced_acc: 0.6161
+
+              precision    recall  f1-score   support
+
+           0       0.47      0.62      0.53       631
+           1       0.75      0.61      0.67      1159
+
+    accuracy                           0.62      1790
+   macro avg       0.61      0.62      0.60      1790
+weighted avg       0.65      0.62      0.62      1790
+
+  ---
+  2. Nested CV + RandomizedSearchCV — medium restructuring
+
+  Currently: GridSearchCV runs once on the full X_trainval before the CV loop → single best C and penalty used in all folds.
+
+  Nested CV: each outer fold runs its own inner RandomizedSearchCV on the fold's training data → per-fold best params. After all
+  folds, aggregate to pick the final C and penalty for the final fit.
+
+  Changes needed:
+  - Add imports: RandomizedSearchCV (already imported), from scipy.stats import loguniform
+  - Replace C_GRID/PENALTY_GRID config with N_ITER_SEARCH = 20 and C_DIST = loguniform(1e-3, 10)
+  - Remove the pre-CV GridSearchCV block entirely
+  - Inside the CV loop, before rebalance_training_data, add inner search:
+
+  _inner = RandomizedSearchCV(
+      LogisticRegression(solver="liblinear", class_weight=_lr_class_weight, max_iter=MAX_ITER),
+      param_distributions={"C": loguniform(1e-3, 10), "penalty": ["l1", "l2"]},
+      n_iter=N_ITER_SEARCH,
+      scoring="f1_macro",
+      cv=StratifiedKFold(n_splits=3, shuffle=True, random_state=42),
+      n_jobs=-1, random_state=42,
+  )
+  _inner.fit(X_fold_train, y_fold_train)
+  fold_C       = _inner.best_params_["C"]
+  fold_penalty = _inner.best_params_["penalty"]
+
+  - Store fold_C/fold_penalty in fold_metrics, then after CV loop:
+  from statistics import median
+  from collections import Counter
+  C_VALUE = median(m["best_C"]     for m in cv_fold_metrics)
+  PENALTY = Counter(m["best_penalty"] for m in cv_fold_metrics).most_common(1)[0][0]
+
+  Cost: 5 outer folds × 3 inner folds × 20 iterations = 300 fits instead of 70 (GridSearch) or 5 (CV loop alone). With embeddings
+  (no sparse TF-IDF), each fit is faster, so it's manageable.
+
+  ---
   

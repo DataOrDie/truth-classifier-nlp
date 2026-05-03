@@ -1178,7 +1178,10 @@ print(f"Saved model artifacts: {saved_paths}")
 _model_dir = project_root / "models" / model_name
 
 # Save fitted vectorizer so kaggle-modulo.py can apply it to test data.
+# SentenceTransformer (embeddings) is stateless — delete any stale file so the
+# submission script never accidentally loads a leftover TF-IDF/count vectorizer.
 if statement_vectorizer_type != "none":
+    _vec_path = _model_dir / f"{model_name}-vectorizer.joblib"
     from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
     if statement_vectorizer_type == "tfidf":
         _vec = TfidfVectorizer(
@@ -1205,9 +1208,11 @@ if statement_vectorizer_type != "none":
 
     if _vec is not None:
         _vec.fit(df_processed[statement_output_col])
-        _vec_path = _model_dir / f"{model_name}-vectorizer.joblib"
         joblib.dump(_vec, _vec_path)
         print(f"  Vectorizer saved: {_vec_path}  (vocab size: {len(_vec.vocabulary_):,})")
+    elif _vec_path.exists():
+        _vec_path.unlink()
+        print(f"  Removed stale vectorizer file: {_vec_path}")
 
 # Save decision threshold.
 _threshold_path = _model_dir / f"{model_name}-threshold.joblib"
