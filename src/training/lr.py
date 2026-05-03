@@ -698,11 +698,46 @@ print(f"Train/val: {X_trainval.shape[0]:,}   Holdout: {X_holdout.shape[0]:,}   C
 # -----------------------------------------------------------------------------
 # Model hyperparameters
 # -----------------------------------------------------------------------------
-CLASS_WEIGHT       = {0: 1.42, 1: 0.77}
-C_VALUE            = 1.0
-MAX_ITER           = 1000
-model_name         = "logistic_regression"
-create_kaggle_csv  = True
+CLASS_WEIGHT      = {0: 1.42, 1: 0.77}
+C_VALUE           = 1.0
+MAX_ITER          = 1000
+model_name        = "lr"
+create_kaggle_csv = True
+
+# "class_weight"    → pass CLASS_WEIGHT to LogisticRegression (no resampling)
+# "oversample_reject" → upsample class 0 (true statements, minority) to match class 1
+balance_strategy  = "class_weight"
+
+
+def rebalance_training_data(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    strategy: str,
+    random_state: int = 42,
+) -> tuple[pd.DataFrame, pd.Series]:
+    if strategy in ("none", "class_weight"):
+        return X_train, y_train
+
+    frame = X_train.copy()
+    frame["_label"] = y_train.values
+    minority = frame[frame["_label"] == 0]  # true statements — minority (35%)
+    majority = frame[frame["_label"] == 1]  # false statements — majority (65%)
+
+    if strategy == "oversample_reject":
+        minority = minority.sample(n=len(majority), replace=True, random_state=random_state)
+    else:
+        raise ValueError(f"Unknown balance_strategy: {strategy!r}")
+
+    balanced = (
+        pd.concat([minority, majority], ignore_index=True)
+        .sample(frac=1.0, random_state=random_state)
+        .reset_index(drop=True)
+    )
+    return balanced.drop(columns=["_label"]), balanced["_label"]
+
+
+# class_weight arg passed to LR — None when resampling handles balance instead
+_lr_class_weight = CLASS_WEIGHT if balance_strategy == "class_weight" else None
 
 
 # -----------------------------------------------------------------------------
@@ -717,7 +752,8 @@ run = wandb.init(
         "solver":                  "liblinear",
         "C":                       C_VALUE,
         "max_iter":                MAX_ITER,
-        "class_weight":            str(CLASS_WEIGHT),
+        "balance_strategy":        balance_strategy,
+        "class_weight":            str(_lr_class_weight),
         "cv_folds":                skf.get_n_splits(),
         "n_trainval":              int(X_trainval.shape[0]),
         "n_holdout":               int(X_holdout.shape[0]),
@@ -754,15 +790,16 @@ cv_fold_metrics = []
 
 for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval), 1):
     _fold_t = time()
-    X_fold_train = X_trainval.iloc[train_idx]
-    y_fold_train = y_trainval.iloc[train_idx]
-    X_fold_val   = X_trainval.iloc[val_idx]
-    y_fold_val   = y_trainval.iloc[val_idx]
+    X_fold_train, y_fold_train = rebalance_training_data(
+        X_trainval.iloc[train_idx], y_trainval.iloc[train_idx], balance_strategy
+    )
+    X_fold_val = X_trainval.iloc[val_idx]
+    y_fold_val  = y_trainval.iloc[val_idx]
 
     fold_model = LogisticRegression(
         solver="liblinear",
         C=C_VALUE,
-        class_weight=CLASS_WEIGHT,
+        class_weight=_lr_class_weight,
         max_iter=MAX_ITER,
         random_state=42,
     )
@@ -828,14 +865,15 @@ wandb.log({"cv/folds_table": cv_table, **cv_summary})
 # -----------------------------------------------------------------------------
 print(f"[SECTION] Fitting final model on full train/val set  [{_now()}]")
 _t0 = time()
+X_fit, y_fit = rebalance_training_data(X_trainval, y_trainval, balance_strategy)
 model = LogisticRegression(
     solver="liblinear",
     C=C_VALUE,
-    class_weight=CLASS_WEIGHT,
+    class_weight=_lr_class_weight,
     max_iter=MAX_ITER,
     random_state=42,
 )
-model.fit(X_trainval, y_trainval)
+model.fit(X_fit, y_fit)
 print(f"  Done in {time()-_t0:.1f}s")
 
 
