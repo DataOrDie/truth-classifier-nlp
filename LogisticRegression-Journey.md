@@ -241,7 +241,24 @@ C and L1 penalty explained
 
 ----------------------------------------------------------------------------------------------
 
+# kaggle
 
+### [2026-05-03] Kaggle submission pipeline — `src/submit/kaggle-modulo.py`
 
+**Problem:** The old `kaggle-modulo.py` was written for a completely different project (SBA loans, `Accept` column, `is_tree_model` logic) and would crash immediately on this dataset.
 
+**What was built:**
+
+1. **`lr.py` — save section extended** — after `save_model()`, two extra artifacts are now written to `models/lr/`:
+   - `lr-vectorizer.joblib` — the TF-IDF vectorizer re-fit on `df_processed["statement_clean"]` with the exact same params (`max_features=5000`, `min_df=2`, `max_df=0.9`). Re-fitting on the same already-cleaned text produces an identical vocabulary to the one used during training.
+   - `lr-threshold.joblib` — the final `THRESHOLD` value (post-tuning if `enable_threshold_tuning=True`).
+
+2. **`kaggle-modulo.py` — full rewrite** — correct flow for this project:
+   - Loads model + options + feature_names via `load_model`.
+   - Loads `lr-threshold.joblib` (falls back to 0.5 if file missing).
+   - Loads `lr-vectorizer.joblib` and injects it into `options.statement_fitted_vectorizer` — this forces `statement_ds.py` to call `.transform()` instead of `.fit_transform()` on test text, so the exact training vocabulary is used (no vocabulary mismatch).
+   - Sets `options.label_option = "skip"` (test CSV has no label column; `"drop"` would crash with KeyError).
+   - Runs `preprocess_one_step`, selects numeric columns, aligns to `feature_names` with `fill_value=0`.
+   - Applies `model.predict_proba(X_test)[:, 1] >= threshold` for predictions.
+   - Outputs `id, label` CSV (not `id, Accept`).
 

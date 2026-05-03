@@ -4,6 +4,8 @@ from pathlib import Path
 import sys
 from time import time
 
+import joblib
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -1104,6 +1106,46 @@ saved_paths = save_model(
     model_name=model_name,
 )
 print(f"Saved model artifacts: {saved_paths}")
+
+_model_dir = project_root / "models" / model_name
+
+# Save fitted vectorizer so kaggle-modulo.py can apply it to test data.
+if statement_vectorizer_type != "none":
+    from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+    if statement_vectorizer_type == "tfidf":
+        _vec = TfidfVectorizer(
+            max_features=statement_vectorizer_max_features,
+            min_df=statement_vectorizer_min_df,
+            max_df=statement_vectorizer_max_df,
+        )
+    elif statement_vectorizer_type == "bigram":
+        _vec = TfidfVectorizer(
+            max_features=statement_vectorizer_max_features,
+            min_df=statement_vectorizer_min_df,
+            max_df=statement_vectorizer_max_df,
+            ngram_range=(1, 2),
+        )
+    elif statement_vectorizer_type == "binary":
+        _vec = CountVectorizer(
+            max_features=statement_vectorizer_max_features,
+            min_df=statement_vectorizer_min_df,
+            max_df=statement_vectorizer_max_df,
+            binary=True,
+        )
+    else:
+        _vec = None
+
+    if _vec is not None:
+        _vec.fit(df_processed[statement_output_col])
+        _vec_path = _model_dir / f"{model_name}-vectorizer.joblib"
+        joblib.dump(_vec, _vec_path)
+        print(f"  Vectorizer saved: {_vec_path}  (vocab size: {len(_vec.vocabulary_):,})")
+
+# Save decision threshold.
+_threshold_path = _model_dir / f"{model_name}-threshold.joblib"
+joblib.dump(THRESHOLD, _threshold_path)
+print(f"  Threshold saved: {_threshold_path}  (value: {THRESHOLD:.2f})")
+
 print(f"\n[DONE] Total script time: {time()-_script_start:.1f}s  [{_now()}]")
 
 
