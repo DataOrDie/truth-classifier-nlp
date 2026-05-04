@@ -490,6 +490,28 @@ weighted avg       0.65      0.64      0.64      1790
   predict_proba still works, so the holdout evaluation and Kaggle submission code are unaffected.                                  
   3. W&B config — added "calibration_method": "isotonic" to the run config.    
 
+
+Holdout results:
+  roc_auc: 0.6602
+  pr_auc: 0.7709
+  macro_f1: 0.5548
+  f1: 0.7744
+  precision: 0.6836
+  recall: 0.8930
+  accuracy: 0.6631
+  mcc: 0.1771
+  balanced_acc: 0.5669
+
+              precision    recall  f1-score   support
+
+           0       0.55      0.24      0.34       631
+           1       0.68      0.89      0.77      1159
+
+    accuracy                           0.66      1790
+   macro avg       0.62      0.57      0.55      1790
+weighted avg       0.64      0.66      0.62      1790
+
+
   ---
   Summary table
 
@@ -513,22 +535,74 @@ weighted avg       0.65      0.64      0.64      1790
   feature-importance code that accesses model.coef_ will break — need to guard those with hasattr.
 
 
+### FINAL SUMMARY
 
-  ---
-  Summary table
+The logistic regression effort started from a clean baseline and iterated through five structural improvements. Across all of them, the fundamental ceiling of the model stayed stubbornly close — ROC-AUC moved from **0.654 to 0.665** at best, and macro F1 from **0.604 to 0.611** at best. This is the story of what was tried, what worked, and where the model pushed back.
 
-  ┌───────────────────────────┬───────────────────────────┬───────────────────────────────┐
-  │          Change           │      Lines affected       │        Runtime impact         │
-  ├───────────────────────────┼───────────────────────────┼───────────────────────────────┤
-  │ Embeddings                │ ~2                        │ Preprocessing slower (MiniLM) │
-  ├───────────────────────────┼───────────────────────────┼───────────────────────────────┤
-  │ Nested RandomizedSearchCV │ ~30, restructures CV loop │ +~230 fits                    │
-  ├───────────────────────────┼───────────────────────────┼───────────────────────────────┤
-  │ Isotonic calibration      │ ~5, replaces final fit    │ Negligible (+5 fits)          │
-  ├───────────────────────────┼───────────────────────────┼───────────────────────────────┤
-  │ Threshold tuning          │ Already implemented       │ —                             │
-  └───────────────────────────┴───────────────────────────┴───────────────────────────────┘
+---
 
-  ----------------------------
+#### The baseline and its core problem
 
-  
+The starting configuration used TF-IDF unigrams (5,000 features), Porter stemming, and a plain LogisticRegression with liblinear solver, C=1.0, L2 penalty, and class weights locked to the dataset imbalance (0: 1.42, 1: 0.77). With 5-fold stratified CV and a 20% holdout, it landed at macro F1 = 0.604, ROC-AUC = 0.654, and MCC = 0.219. The immediate problem was visible in the class breakdown: precision on true statements (class 0) was 0.47, meaning nearly half of everything the model called "true" was actually false. The model had learned to lean heavily on the majority class.
+
+This imbalance issue was the thread running through every subsequent experiment. Solving it — getting class 0 precision and recall both above 0.50 — was the implicit goal.
+
+---
+
+#### Threshold tuning — expected more, got less
+
+The first intervention was OOF threshold tuning: scan the decision boundary from 0.20 to 0.75, evaluate macro F1 on out-of-fold predictions, pick the best cutoff. The expectation was that shifting the threshold below 0.5 would force the model to predict class 0 more often, meaningfully improving its recall without touching any training code.
+
+In practice the tuner picked **0.46** — barely below the default. Macro F1 actually slipped from 0.604 to **0.596**, and class 0 recall moved from 0.59 to only 0.49. The threshold tuner found that 0.46 was the best available but couldn't pull the class 0 numbers up meaningfully because the underlying probability estimates were poorly separated to begin with. A threshold shift is only as powerful as the probability distributions it shifts; when the model assigns overlapping scores to both classes, no cutoff rescues it.
+
+---
+
+#### Bigrams — small, clean win
+
+Switching from unigrams to bigrams (`statement_vectorizer_type = 'bigram'`, max_features bumped to 10,000) was expected to capture politically characteristic phrases like "never raised taxes" or "lowest unemployment ever" that carry more signal as units than their component words do separately. The result was a genuine, if modest, improvement: macro F1 to **0.607**, class 0 F1 up from 0.48 to 0.51, with no regression on the false-statement side. Phrase-level patterns in political statements do carry signal. The improvement was small partly because max_features=10,000 splits the budget between unigrams and bigrams — important single words compete for slots with new pairs.
+
+---
+
+#### True-rate features — the expected big win arrived, partially
+
+The most anticipated change was per-fold true-rate features: each speaker's, subject's, and party's historical false-claim rate, computed only on the training portion of each CV fold to avoid leakage. The hypothesis was that a speaker's track record is the strongest single signal in Politifact data — a speaker who has lied 80% of the time in the training fold is very likely lying again.
+
+This change was combined with switching the statement vectorizer from TF-IDF to sentence embeddings (all-MiniLM-L6-v2, 384 dense columns instead of sparse word counts). The expectation was a meaningful jump in AUC and balanced accuracy.
+
+The results were mixed in an instructive way. ROC-AUC did improve to **0.665**, the best of the entire experiment. Class 0 recall climbed to 0.62. But macro F1 was only 0.603 — lower than bigrams alone. The embeddings reduced false-positive false-claim predictions (higher precision on class 1: 0.75) but compressed class 1 recall (0.61), redistributing rather than expanding the model's discriminative ability. The true-rate features clearly helped AUC, but the semantic compression of 384 dense embedding dimensions sacrificed some of the word-level specificity that TF-IDF unigrams and bigrams had captured cheaply.
+
+---
+
+#### Nested CV + RandomizedSearchCV — the most reliable improvement
+
+Replacing the single pre-CV grid search with per-fold inner RandomizedSearchCV (20 iterations over loguniform(1e-3, 10) for C, both L1 and L2 penalty) was the most structurally sound change. The prior approach picked C and penalty once on all of X_trainval, then used those values in all folds — a form of information leakage from validation folds back into hyperparameter selection. Nested CV removes that bias.
+
+The final C and penalty are the geometric mean and mode across fold-best values respectively. The result: macro F1 **0.611**, ROC-AUC 0.660, MCC 0.224, accuracy 0.637 — the best balanced profile of any run. Class 0 and class 1 F1 were both at 0.51 and 0.71, and the spread between CV mean macro F1 and holdout macro F1 was the narrowest of any run, suggesting the model generalized cleanly. The cost was 300 fits instead of 5, roughly a 10x slowdown in the training loop, which with embeddings was acceptable.
+
+---
+
+#### Isotonic calibration — expected better probabilities, got worse predictions
+
+The final change replaced the plain `model.fit` with `CalibratedClassifierCV(base_lr, method="isotonic", cv=5)`. The motivation was sound: logistic regression with class weights already applied does not produce well-calibrated probabilities — the scores are shifted by the weight adjustments — and isotonic calibration learns a monotonic mapping from raw scores to true class frequencies using internal cross-validation. Better-calibrated probabilities were expected to make the OOF threshold tuner's job easier and produce a more reliable decision boundary.
+
+The actual result was the worst macro F1 of the experiment: **0.555**. Class 0 recall collapsed to **0.24** — the model became almost completely unwilling to predict true statements. What happened is a compounding failure: isotonic regression, learned on 5 inner folds of 80% of the training data (already class-weighted), reshaped the probability space in a way that interacted badly with the OOF threshold tuner. The tuner, seeing the re-mapped probabilities, selected a threshold that pushed nearly all predictions into class 1. ROC-AUC held at 0.660, meaning the rank ordering of predictions was preserved — the calibration didn't destroy signal — but the operating point selected by threshold tuning on the new probability scale was far from optimal for macro F1.
+
+This is a known trap: isotonic calibration on small, imbalanced datasets tends to overfit the calibration curve to the training fold frequencies, and when combined with class-weighted base estimators, the interaction is unpredictable. The fix would require either (a) tuning the threshold on the calibrated probabilities separately from the calibration fitting, or (b) using Platt scaling (`method="sigmoid"`) which is smoother and less prone to this behavior at this dataset size.
+
+---
+
+#### Where things stand
+
+| Run | Macro F1 | ROC-AUC | MCC | Class 0 F1 |
+|---|---|---|---|---|
+| Baseline (TF-IDF, C=1.0, L2) | 0.604 | 0.654 | 0.219 | 0.52 |
+| + Threshold tuning | 0.596 | 0.653 | 0.192 | 0.48 |
+| + Bigrams | 0.607 | 0.653 | 0.215 | 0.51 |
+| + Embeddings + True-rate features | 0.603 | **0.665** | 0.222 | 0.53 |
+| + Nested CV | **0.611** | 0.660 | **0.224** | 0.51 |
+| + Isotonic calibration | 0.555 | 0.660 | 0.177 | 0.34 |
+
+The best submitted configuration was nested CV with embeddings and true-rate features (macro F1 ~0.611, ROC-AUC ~0.665). The isotonic calibration run should not be submitted. If calibration is to be tried again, Platt scaling or temperature scaling would be safer starting points, and the threshold grid search should be retuned on the post-calibration probability scale rather than inherited from the raw LR outputs.
+
+The underlying ceiling is likely the linearity of the model itself. LR cannot learn that a Republican speaker making an economic claim during an election year is more likely to be false than any of those features would predict independently. That interaction structure is what tree-based models handle natively — the next natural step.
+
