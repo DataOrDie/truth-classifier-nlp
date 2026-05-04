@@ -626,9 +626,16 @@ CLASS_WEIGHT  = {0: 1.42, 1: 0.77}
 N_ESTIMATORS  = 300
 MAX_DEPTH     = None    # grow full trees; depth is controlled implicitly by min_samples_leaf
 MIN_SAMPLES_LEAF = 1
-THRESHOLD     = 0.5     # fixed decision threshold; RFC probabilities are reasonably calibrated
+THRESHOLD     = 0.5     # starting point; overwritten by threshold tuning when enabled
 model_name    = "rfc"
 create_kaggle_csv = True   # run kaggle_module_forTrees.py after saving to produce submission CSV
+
+# Threshold tuning — searches the OOF probability predictions from the CV loop for
+# the cutoff that maximises THRESHOLD_METRIC. No retraining needed; the OOF probas
+# already collected give an unbiased estimate of out-of-sample performance per threshold.
+enable_threshold_tuning = True
+overwrite_threshold     = True    # set False to inspect the grid without updating THRESHOLD
+THRESHOLD_METRIC        = "macro_f1"  # "macro_f1" | "mcc" | "balanced_acc"
 
 # Whether to compute true-rate features (speaker/subject/party historical false-claim rates)
 # fold-safe inside the CV loop. Most predictive single signal in this dataset.
@@ -816,6 +823,49 @@ cv_table = wandb.Table(
     ],
 )
 wandb.log({"cv/folds_table": cv_table, **cv_summary})
+
+
+# -----------------------------------------------------------------------------
+# Threshold tuning (OOF)
+# -----------------------------------------------------------------------------
+if enable_threshold_tuning:
+    print(f"\n[SECTION] Threshold tuning on OOF predictions  [{_now()}]")
+
+    _metric_fn = {
+        "macro_f1":     lambda t, yt, yp: f1_score(yt, yp, average="macro", zero_division=0),
+        "mcc":          lambda t, yt, yp: matthews_corrcoef(yt, yp),
+        "balanced_acc": lambda t, yt, yp: balanced_accuracy_score(yt, yp),
+    }[THRESHOLD_METRIC]
+
+    threshold_grid   = np.arange(0.20, 0.76, 0.02)
+    threshold_scores = {}
+    for t in threshold_grid:
+        preds = (oof_proba >= t).astype(int)
+        threshold_scores[round(float(t), 2)] = _metric_fn(t, oof_true, preds)
+
+    best_threshold = max(threshold_scores, key=threshold_scores.get)
+    best_score     = threshold_scores[best_threshold]
+
+    print(f"  {'threshold':>10}   {THRESHOLD_METRIC}")
+    for t, s in threshold_scores.items():
+        marker = "  ←" if t == best_threshold else ""
+        print(f"  {t:>10.2f}   {s:.4f}{marker}")
+    print(f"\n  Best threshold: {best_threshold:.2f}  (OOF {THRESHOLD_METRIC}={best_score:.4f})")
+
+    wandb.log({
+        "threshold/best":                    best_threshold,
+        f"threshold/oof_{THRESHOLD_METRIC}": best_score,
+        "threshold/grid": wandb.Table(
+            columns=["threshold", THRESHOLD_METRIC],
+            data=[[t, s] for t, s in threshold_scores.items()],
+        ),
+    })
+
+    if overwrite_threshold:
+        print(f"  THRESHOLD updated: {THRESHOLD:.2f} → {best_threshold:.2f}")
+        THRESHOLD = best_threshold
+    else:
+        print(f"  THRESHOLD kept at {THRESHOLD:.2f} (overwrite_threshold=False)")
 
 
 # -----------------------------------------------------------------------------
