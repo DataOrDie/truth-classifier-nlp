@@ -122,11 +122,11 @@ statement_remove_html = True
 statement_remove_urls = True
 statement_replace_numbers = False
 statement_number_token = '<NUM>'
-# Stopword removal is enabled here to clean the TF-IDF vocabulary — the initial
-# run showed "the", "in", "of" in the top-30 features, consuming importance from
-# real signals. keep_negations=True preserves "not", "never", "no", "n't" so the
-# fe_negation_count and absolutist features computed from statement_clean are unaffected.
-statement_stopword_removal = True
+# Stopword removal was enabled for TF-IDF to remove "the", "in", "of" from the
+# vocabulary. For sentence embeddings it must be disabled: the transformer was
+# trained on natural language and function words contribute to grammatical context.
+# Removing them corrupts the input (e.g. "climate change is real" → "climate change real").
+statement_stopword_removal = False
 statement_keep_negations = True
 statement_remove_punctuation = False
 # Stemming and lemmatization compress vocabulary to help linear models;
@@ -144,14 +144,14 @@ statement_add_pollution_features = True         # tab_count, newline_count, row_
 statement_add_ner_features = False              # slow; set True to add PERSON/ORG/GPE/etc counts
 statement_ner_model = 'en_core_web_sm'
 
-# TF-IDF capped at 500 terms.
-# Large sparse TF-IDF matrices are expensive for tree ensembles and add
-# diminishing returns beyond ~500 top terms. Switch vectorizer_type to
-# 'embeddings' for better semantic coverage (5-15x slower preprocessing).
-statement_vectorizer_type = 'tfidf'
+# Sentence embeddings (all-MiniLM-L6-v2, 384-dim dense output).
+# The transformer encodes the full statement semantics into a fixed-length vector.
+# Stateless at inference time — no vocabulary file to save or align.
+# TF-IDF params below are kept but unused when vectorizer_type='embeddings'.
+statement_vectorizer_type = 'embeddings'
 statement_vectorizer_max_features = 500
 statement_vectorizer_min_df = 2
-statement_vectorizer_max_df = 0.7   # initial run: 0.9 let "the","in","of" survive; 0.7 cuts them
+statement_vectorizer_max_df = 0.7
 statement_embedding_model = 'all-MiniLM-L6-v2'
 statement_fitted_vectorizer = None
 
@@ -720,7 +720,8 @@ run = wandb.init(
         "n_cat_features":           len(cat_cols_X),
         "n_other_features":         len(other_cols),
         "vectorizer_type":          statement_vectorizer_type,
-        "vectorizer_max_features":  statement_vectorizer_max_features,
+        "embedding_model":          statement_embedding_model if statement_vectorizer_type == "embeddings" else "n/a",
+        "vectorizer_max_features":  statement_vectorizer_max_features if statement_vectorizer_type != "embeddings" else 384,
         "statement_add_lexical":    statement_add_lexical_features,
         "statement_add_pollution":  statement_add_pollution_features,
         "statement_add_spelling":   statement_add_spelling_errors,
