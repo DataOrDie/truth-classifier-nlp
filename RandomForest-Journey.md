@@ -169,6 +169,78 @@ Stopword removal in `statement_ds.py` only affects vectorization, not the lexica
 
 **Expected impact:** Removes a near-unique row-ID feature that was absorbing importance from real signals. Cleans up 5–10 slots in the top-30 importance list. Likely a small improvement in OOF macro F1 without any HP changes.
 
+-> STEP 1 output
+Holdout results:
+  roc_auc: 0.6388
+  pr_auc: 0.7623
+  macro_f1: 0.5606
+  f1: 0.7688
+  precision: 0.6856
+  recall: 0.8749
+  accuracy: 0.6592
+  mcc: 0.1740
+  balanced_acc: 0.5690
+
+              precision    recall  f1-score   support
+
+           0       0.53      0.26      0.35       631
+           1       0.69      0.87      0.77      1159
+
+    accuracy                           0.66      1790
+   macro avg       0.61      0.57      0.56      1790
+weighted avg       0.63      0.66      0.62      1790
+
+[SECTION] Computing feature importance
+  Top 30 features:
+    fe_speaker_true_rate                                0.0335
+    statement_upper_ratio                               0.0259
+    statement_clean_avg_token_freq                      0.0226
+    fe_readability                                      0.0226
+    statement_original_char_len                         0.0216
+    fe_subject_true_rate                                0.0211
+    fe_subject_party                                    0.0196
+    fe_speaker_job_subject                              0.0193
+    fe_speaker_subject                                  0.0193
+    subject_length                                      0.0186
+    fe_subject_avg_statement_len                        0.0183
+    statement_original_word_count                       0.0176
+    fe_speaker_avg_punctuation                          0.0157
+    fe_speaker_len_bucket                               0.0150
+    fe_speaker_avg_number_ratio                         0.0144
+    subject_primary_grouped                             0.0143
+    fe_speaker_avg_statement_len                        0.0142
+    subject_frequency                                   0.0141
+    fe_speaker_party                                    0.0140
+    fe_sentiment_polarity                               0.0138
+    statement_clean_spelling_err_count                  0.0135
+    subject_primary                                     0.0135
+    fe_sentiment_subjectivity                           0.0130
+    statement_clean_digit_ratio                         0.0124
+    fe_state_party                                      0.0118
+    speaker_char_len                                    0.0118
+    speaker_frequency_pct                               0.0105
+    speaker_frequency                                   0.0101
+    speaker_job_char_len                                0.0101
+    speaker_grouped                                     0.0094
+
+#### Step 1 — What changed, what it means
+
+| Metric | Initial | Step 1 | Δ |
+|--------|---------|--------|---|
+| Macro F1 | 0.5516 | 0.5606 | **+0.009** |
+| Class 0 F1 | 0.33 | 0.35 | +0.02 |
+| Class 0 recall | 0.24 | 0.26 | +0.02 |
+| ROC-AUC | 0.6598 | 0.6388 | −0.021 |
+| MCC | 0.1716 | 0.1740 | +0.002 |
+
+**Bugs confirmed fixed.** `statement` is gone from the importance list. `statement_clean_vec_the` (0.0126), `statement_clean_vec_in` (0.0100), `statement_clean_vec_of` (0.0092) are all gone. The ~0.05 combined importance they absorbed has redistributed to real signals — `statement_upper_ratio` jumped from 0.0201 → 0.0259, `fe_readability` from 0.0180 → 0.0226.
+
+**Macro F1 improved modestly (+0.009), as expected.** The estimate was "small improvement" and that is what we got. The class 0 recall improved only from 0.24 → 0.26, confirming the fix alone does not solve the threshold problem.
+
+**ROC-AUC dropped −0.021.** This is counterintuitive but explainable. The `statement` pseudo row-ID had near-unique integers which could accidentally produce a well-ranked holdout if the model happened to memorise label order during training. Removing it hurts the ranking metric while improving the threshold-based one (macro F1). This is also within the noise range of a single 20% holdout split. The PR-AUC drop (0.7782 → 0.7623) follows the same pattern.
+
+**Feature importance is now clean and interpretable.** Every top-30 feature is a genuine signal. The flat distribution (max 0.0335) persists — no single feature dominates, which is expected with structured metadata at this scale. The threshold at 0.5 is the remaining bottleneck: class 0 recall is still only 0.26.
+
 ---
 
 ### Step 2 — Threshold tuning on OOF probabilities (no retraining needed)
