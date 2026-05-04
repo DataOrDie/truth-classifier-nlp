@@ -441,6 +441,29 @@ weighted avg       0.65      0.62      0.62      1790
   Cost: 5 outer folds × 3 inner folds × 20 iterations = 300 fits instead of 70 (GridSearch) or 5 (CV loop alone). With embeddings
   (no sparse TF-IDF), each fit is faster, so it's manageable.
 
+
+Holdout results:
+  roc_auc: 0.6601
+  pr_auc: 0.7710
+  macro_f1: 0.6109
+  f1: 0.7125
+  precision: 0.7322
+  recall: 0.6937
+  accuracy: 0.6374
+  mcc: 0.2235
+  balanced_acc: 0.6139
+
+              precision    recall  f1-score   support
+
+           0       0.49      0.53      0.51       631
+           1       0.73      0.69      0.71      1159
+
+    accuracy                           0.64      1790
+   macro avg       0.61      0.61      0.61      1790
+weighted avg       0.65      0.64      0.64      1790
+
+
+
   ---
   3. Isotonic calibration — 5 lines
 
@@ -461,6 +484,11 @@ weighted avg       0.65      0.62      0.62      1790
 
   One downstream consequence: model.coef_ no longer exists (it's a calibrated wrapper, not raw LR), so any W&B logging or
   feature-importance code that accesses model.coef_ will break — need to guard those with hasattr.
+
+  1. Import — added from sklearn.calibration import CalibratedClassifierCV (line 28).                                            
+  2. Final fit block — model is now a CalibratedClassifierCV(_base_lr, method="isotonic", cv=5) wrapping the LogisticRegression.   
+  predict_proba still works, so the holdout evaluation and Kaggle submission code are unaffected.                                  
+  3. W&B config — added "calibration_method": "isotonic" to the run config.    
 
   ---
   Summary table
@@ -483,6 +511,8 @@ weighted avg       0.65      0.62      0.62      1790
 
   One downstream consequence: model.coef_ no longer exists (it's a calibrated wrapper, not raw LR), so any W&B logging or
   feature-importance code that accesses model.coef_ will break — need to guard those with hasattr.
+
+
 
   ---
   Summary table

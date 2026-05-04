@@ -24,6 +24,7 @@ from sklearn.metrics import (
     roc_auc_score,
     roc_curve,
 )
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.linear_model import LogisticRegression
 from scipy.stats import loguniform
 from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold, train_test_split
@@ -844,6 +845,7 @@ run = wandb.init(
         "fe_scale":                fe_scale,
         "true_rate_features":      enable_true_rate_features,
         "true_rate_cols":          list(_tr_group_cols.values()) if enable_true_rate_features else [],
+        "calibration_method":      "isotonic",
     },
 )
 
@@ -1051,7 +1053,7 @@ if enable_true_rate_features and _tr_group_cols:
         _final_rate_maps[_feat] = _rate_map.to_dict()
 
 X_fit, y_fit = rebalance_training_data(X_trainval_final, y_trainval, balance_strategy)
-model = LogisticRegression(
+_base_lr = LogisticRegression(
     solver="liblinear",
     C=C_VALUE,
     penalty=PENALTY,
@@ -1059,6 +1061,7 @@ model = LogisticRegression(
     max_iter=MAX_ITER,
     random_state=42,
 )
+model = CalibratedClassifierCV(_base_lr, method="isotonic", cv=5)
 model.fit(X_fit, y_fit)
 print(f"  Done in {time()-_t0:.1f}s")
 
