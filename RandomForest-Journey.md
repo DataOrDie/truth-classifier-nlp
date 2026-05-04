@@ -506,6 +506,125 @@ statement_embedding_model    = "all-MiniLM-L6-v2"   # 384-dim dense output
 
 **Expected impact:** Likely the largest single gain. LR with embeddings outperformed LR with TF-IDF substantially in earlier experiments. +0.04–0.08 macro F1 estimate, primarily because class 0 (true statements) have subtler phrasing differences that bag-of-words misses.
 
+
+--> step 4 output
+Final HP for fit: {'n_estimators': 200, 'max_features': 0.5, 'min_samples_leaf': 5}
+
+[SECTION] Threshold tuning on OOF predictions  [22:46:55]
+   threshold   macro_f1
+        0.20   0.3951
+        0.22   0.3963
+        0.24   0.3979
+        0.26   0.4019
+        0.28   0.4091
+        0.30   0.4190
+        0.32   0.4261
+        0.34   0.4402
+        0.36   0.4569
+        0.38   0.4736
+        0.40   0.4953
+        0.42   0.5079
+        0.44   0.5270
+        0.46   0.5494
+        0.48   0.5617
+        0.50   0.5750
+        0.52   0.5842
+        0.54   0.6005
+        0.56   0.6050  ←
+        0.58   0.6048
+        0.60   0.6004
+        0.62   0.5899
+        0.64   0.5734
+        0.66   0.5549
+        0.68   0.5301
+        0.70   0.5047
+        0.72   0.4770
+        0.74   0.4587
+        0.76   0.4389
+
+  Best threshold: 0.56  (OOF macro_f1=0.6050)
+  THRESHOLD updated: 0.50 → 0.56
+[SECTION] Fitting final model on full train/val set  [22:46:56]
+  Done in 13.3s
+[SECTION] Evaluating on holdout set  [22:47:09]
+  Using threshold: 0.56
+
+Holdout results:
+  roc_auc: 0.6606
+  pr_auc: 0.7701
+  macro_f1: 0.6080
+  f1: 0.7144
+  precision: 0.7278
+  recall: 0.7015
+  accuracy: 0.6369
+  mcc: 0.2167
+  balanced_acc: 0.6098
+
+              precision    recall  f1-score   support
+
+           0       0.49      0.52      0.50       631
+           1       0.73      0.70      0.71      1159
+
+    accuracy                           0.64      1790
+   macro avg       0.61      0.61      0.61      1790
+weighted avg       0.64      0.64      0.64      1790
+
+[SECTION] Computing feature importance
+  Top 30 features:
+    fe_speaker_true_rate                                0.0889
+    fe_subject_true_rate                                0.0082
+    statement_original_vec_164                          0.0080
+    fe_party_true_rate                                  0.0064
+    statement_original_vec_0                            0.0059
+    statement_upper_ratio                               0.0051
+    party_affiliation_grouped                           0.0051
+    statement_original_vec_119                          0.0050
+    statement_original_vec_30                           0.0049
+    statement_original_vec_99                           0.0047
+    statement_original_vec_361                          0.0044
+    statement_original_vec_202                          0.0041
+    statement_original_vec_105                          0.0040
+    statement_original_vec_204                          0.0039
+    statement_original_vec_63                           0.0039
+    statement_original_vec_158                          0.0038
+    statement_original_vec_1                            0.0037
+    statement_original_vec_142                          0.0036
+    statement_original_vec_344                          0.0034
+    statement_original_vec_219                          0.0034
+    statement_original_vec_291                          0.0034
+    statement_original_vec_11                           0.0034
+    statement_original_vec_132                          0.0034
+    statement_original_vec_17                           0.0032
+    statement_original_vec_191                          0.0031
+    statement_original_vec_232                          0.0030
+    statement_original_vec_97                           0.0030
+    statement_original_vec_155                          0.0030
+    statement_original_vec_302                          0.0030
+    statement_original_vec_250                          0.0030
+
+#### Step 4 Analysis
+
+**Macro F1: +0.014 (0.5942 → 0.6080).** Predicted +0.04–0.08, delivered +0.014. The gain is real and consistent — ROC-AUC also improved +0.013 (0.6481 → 0.6606) — but smaller than expected. The LR experiments where embeddings outperformed TF-IDF by a wide margin involved a linear model that relies entirely on text signal; RF already extracts substantial signal from metadata, so the incremental text gain is smaller.
+
+**HP search found `max_features=0.5` (50% of features per split).** In Step 3 the optimal was `sqrt` (≈29 of ~570 features). With embeddings the feature matrix grew to ~870 columns, and each embedding dimension is individually weak. With `max_features=sqrt` only ~29 of 870 features get sampled per split — most embedding dimensions are never evaluated at any given node. At `max_features=0.5`, the model sees ~435 features per split and can combine embedding dimensions more effectively. The HP search correctly adapted to the changed feature space.
+
+**`fe_speaker_true_rate` now dominates at 0.0889.** One feature accounts for ~9% of all impurity reduction. The reason: with `max_features=0.5`, the speaker true rate is available at almost every split, and it is so predictive that it gets selected near every root. This concentration is a sign that the rest of the feature space is not adding proportionally — the model can almost get by on “who said it” alone.
+
+**Embedding dimensions appear in the top 30.** About 27 of the top 30 features are `statement_original_vec_N`, each with importance ~0.003–0.008. Individually tiny, but collectively they contribute roughly as much as `fe_speaker_true_rate`. This confirms the embeddings are genuinely useful — the signal is just diffuse across 384 dimensions.
+
+**Threshold shifted back to 0.56.** With embeddings the probability distribution is again pushed higher (similar to the `class_weight` effect in Step 2), requiring the threshold to move above 0.5 to recover balance.
+
+| Metric | Step 3 | Step 4 | Δ |
+|--------|--------|--------|---|
+| Macro F1 | 0.5942 | **0.6080** | +0.014 |
+| ROC-AUC | 0.6481 | **0.6606** | +0.013 |
+| Class 0 recall | 0.50 | 0.52 | +0.02 |
+| Threshold | 0.50 | **0.56** | shifted |
+| `max_features` | sqrt | **0.5** | adapted |
+
+**What Step 5 needs to address.** `fe_subject_true_rate` (0.0082) and `fe_party_true_rate` (0.0064) are still weak. Adding `fe_speaker_job_true_rate` fills in the last credibility axis (occupation type). NER entity counts add direct structural signal — embedding dimensions capture semantic similarity but not the raw count of named entities, which is orthogonal.
+
+
 ---
 
 ### Step 5 — NER features + additional true-rate signals
