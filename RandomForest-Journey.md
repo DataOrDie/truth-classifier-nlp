@@ -257,6 +257,83 @@ Grid: `np.arange(0.20, 0.76, 0.02)`. At threshold 0.5, class 0 recall is 0.24. M
 
 **Expected impact:** +0.03–0.06 macro F1 from threshold adjustment alone. No retraining.
 
+-> Step 2 output: 
+[SECTION] Evaluating on holdout set  [21:29:13]
+  Using threshold: 0.58
+
+Holdout results:
+  roc_auc: 0.6388
+  pr_auc: 0.7623
+  macro_f1: 0.5952
+  f1: 0.7207
+  precision: 0.7125
+  recall: 0.7291
+  accuracy: 0.6341
+  mcc: 0.1906
+  balanced_acc: 0.5943
+
+              precision    recall  f1-score   support
+
+           0       0.48      0.46      0.47       631
+           1       0.71      0.73      0.72      1159
+
+    accuracy                           0.63      1790
+   macro avg       0.60      0.59      0.60      1790
+weighted avg       0.63      0.63      0.63      1790
+
+[SECTION] Computing feature importance
+  Top 30 features:
+    fe_speaker_true_rate                                0.0335
+    statement_upper_ratio                               0.0259
+    statement_clean_avg_token_freq                      0.0226
+    fe_readability                                      0.0226
+    statement_original_char_len                         0.0216
+    fe_subject_true_rate                                0.0211
+    fe_subject_party                                    0.0196
+    fe_speaker_job_subject                              0.0193
+    fe_speaker_subject                                  0.0193
+    subject_length                                      0.0186
+    fe_subject_avg_statement_len                        0.0183
+    statement_original_word_count                       0.0176
+    fe_speaker_avg_punctuation                          0.0157
+    fe_speaker_len_bucket                               0.0150
+    fe_speaker_avg_number_ratio                         0.0144
+    subject_primary_grouped                             0.0143
+    fe_speaker_avg_statement_len                        0.0142
+    subject_frequency                                   0.0141
+    fe_speaker_party                                    0.0140
+    fe_sentiment_polarity                               0.0138
+    statement_clean_spelling_err_count                  0.0135
+    subject_primary                                     0.0135
+    fe_sentiment_subjectivity                           0.0130
+    statement_clean_digit_ratio                         0.0124
+    fe_state_party                                      0.0118
+    speaker_char_len                                    0.0118
+    speaker_frequency_pct                               0.0105
+    speaker_frequency                                   0.0101
+    speaker_job_char_len                                0.0101
+    speaker_grouped                                     0.0094
+
+#### Step 2 Analysis
+
+**Threshold went UP, not down.** The pre-run prediction was that the optimal threshold would fall to 0.35–0.40. It actually rose to **0.58**. The explanation: `class_weight={0: 1.42, 1: 0.77}` makes the model internally penalise class-1 errors more during training, which pushes the raw probability outputs higher. A balanced model centred at 0.5 ends up biased above 0.5 here, so the OOF search correctly found that 0.58 is the true balance point on these weighted outputs.
+
+**Class 0 recall doubled.** Recall for true statements jumped from 0.26 → 0.46, landing squarely in the predicted 0.40–0.50 target. This is the main payoff of threshold tuning: trading some class-1 recall (0.87 → 0.73) to recover class-0 predictions that were being suppressed below the old 0.5 cutoff.
+
+**Macro F1 gain: +0.035.** This matched the predicted +0.03–0.06 range almost exactly, and meets the 0.59 milestone in the trajectory table. The gain is entirely a threshold effect — ROC-AUC is identical to Step 1 (0.6388), confirming no retraining occurred.
+
+| Metric | Initial | Step 1 | Step 2 | Predicted |
+|--------|---------|--------|--------|-----------|
+| Macro F1 | ~0.51 | 0.5606 | **0.5952** | ~0.59 ✓ |
+| Class 0 recall | 0.24 | 0.26 | 0.46 | 0.40–0.50 ✓ |
+| ROC-AUC | 0.6254 | 0.6388 | 0.6388 | unchanged ✓ |
+| Threshold | 0.50 | 0.50 | **0.58** | 0.35–0.40 ✗ |
+
+**Feature importance — statement raw column is gone.** The top features are now clean: `fe_speaker_true_rate` (0.0335) leads, followed by structural and lexical features. No text column appears in the top 30 — this makes sense at 500 TF-IDF terms with flat importance distribution, each term contributes ~0.0005 and is below the display cutoff.
+
+**What Step 3 needs to address.** The feature importance distribution is still very flat — the top feature has only 3.35% importance across ~570+ features. This is the signature of a model with too many weak features splitting too often. Reducing `max_features` forces each split to choose from a smaller random subset, which increases tree diversity and gives stronger features more relative influence. That is the primary target for Step 3.
+
+
 ---
 
 ### Step 3 — Hyperparameter tuning: `max_features` + `min_samples_leaf`
