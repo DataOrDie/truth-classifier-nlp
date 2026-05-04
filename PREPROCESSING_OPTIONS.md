@@ -511,3 +511,176 @@ opts = OneStepOptions(
     fe_scale="normalize",
 )
 ```
+
+
+
+
+## Recommended Configuration: Tree Models
+
+Target models: `RandomForestClassifier`, `GradientBoostingClassifier`, `XGBoostClassifier`, `LightGBMClassifier`.
+
+### Philosophy
+
+Tree models split on feature values, so they are invariant to monotone transforms and gain nothing from scaling. They do not handle strings natively in sklearn — any string column that survives preprocessing (grouped categories, region strings, interaction keys) must be label/ordinal encoded before fitting. Their main constraints for this dataset are:
+
+1. **Sparse high-dimensional matrices are expensive and weak.** TF-IDF with a large vocabulary creates thousands of near-zero columns; tree splits are inefficient over them. Use dense sentence embeddings instead, or cap TF-IDF vocabulary tightly.
+2. **Structured metadata is gold.** Speaker, party, job, and subject features are far more useful to trees than to linear models because trees can combine them into interaction splits without feature engineering.
+3. **Leakage via target encoding is a real risk.** All `*_true_rate` features must be computed inside CV folds. Never fit them on the full training set.
+
+---
+
+### Recommended `OneStepOptions` kwargs
+
+Two tiers are shown: **lean** (fast, no slow dependencies) and **full** (adds embeddings + NER, much slower).
+
+```python
+# --- LEAN: structured features only, TF-IDF capped to 500 terms ---
+opts_tree_lean = OneStepOptions(
+    # statement
+    statement_vectorizer_type="tfidf",
+    statement_vectorizer_max_features=500,   # keep dimensionality manageable
+    statement_vectorizer_min_df=2,
+    statement_vectorizer_max_df=0.9,
+    statement_add_lexical_features=True,
+    statement_add_pollution_features=True,
+    statement_add_spelling_errors=True,
+    statement_add_rare_token_features=True,
+    statement_scale="none",                  # trees are scale-invariant
+
+    # subject
+    subject_add_primary=True,
+    subject_primary_strategy="most_frequent",
+    subject_add_topic_count=True,
+    subject_add_multiple_topics_flag=True,
+    subject_add_subject_frequency=True,
+    subject_add_is_rare=True,
+    subject_add_grouped_primary=True,
+    subject_group_rare=True,
+    subject_add_length_features=True,
+    subject_add_subject_primary_true_rate=True,   # leakage — CV folds only
+
+    # speaker
+    speaker_add_frequency=True,
+    speaker_add_is_rare=True,
+    speaker_add_grouped_speaker=True,
+    speaker_group_rare=True,
+    speaker_add_length_features=True,
+    speaker_add_title_flag=True,
+    speaker_add_comma_flag=True,
+    speaker_add_period_flag=True,
+    speaker_add_token_count=True,
+    speaker_add_speaker_primary_true_rate=True,   # leakage — CV folds only
+
+    # speaker_job
+    speaker_job_add_frequency=True,
+    speaker_job_add_is_rare=True,
+    speaker_job_add_grouped_job=True,
+    speaker_job_group_rare=True,
+    speaker_job_add_title_flag=True,
+    speaker_job_add_slash_flag=True,
+    speaker_job_add_ampersand_flag=True,
+    speaker_job_add_comma_flag=True,
+    speaker_job_add_length_features=True,
+    speaker_job_add_token_count=True,
+
+    # party_affiliation
+    party_affiliation_add_is_major_party=True,
+    party_affiliation_add_is_institutional=True,
+    party_affiliation_add_frequency=True,
+    party_affiliation_add_is_rare=True,
+    party_affiliation_add_grouped_party=True,
+    party_affiliation_group_rare=True,
+    party_affiliation_add_slash_flag=True,
+    party_affiliation_add_comma_flag=True,
+    party_affiliation_add_parentheses_flag=True,
+
+    # state
+    state_add_is_us_state=True,
+    state_add_frequency=True,
+    state_add_is_rare=True,
+    state_add_grouped_state=True,
+    state_group_rare=True,
+    state_add_us_region=True,
+    state_add_has_us_words=True,
+    state_add_token_count=True,
+
+    # feature_engineering — interaction keys + aggregates + text style
+    fe_label_col="label",
+    fe_add_speaker_subject=True,
+    fe_add_speaker_party=True,
+    fe_add_subject_party=True,
+    fe_add_speaker_job_subject=True,
+    fe_add_state_party=True,
+    fe_add_speaker_statement_len_bucket=True,
+    fe_add_speaker_avg_statement_len=True,
+    fe_add_subject_avg_statement_len=True,
+    fe_add_speaker_avg_punctuation=True,
+    fe_add_speaker_avg_number_ratio=True,
+    fe_add_speaker_true_rate=True,            # leakage — CV folds only
+    fe_add_subject_true_rate=True,            # leakage — CV folds only
+    fe_add_party_true_rate=True,              # leakage — CV folds only
+    fe_add_negation_count=True,
+    fe_add_hedge_count=True,
+    fe_add_absolutist_count=True,
+    fe_add_numeral_count=True,
+    fe_add_proper_noun_count=True,
+    fe_add_readability=True,
+    fe_add_sentiment=True,
+)
+
+# --- FULL: swap in sentence embeddings + NER; remove TF-IDF vec flags ---
+# Replace the three statement_vectorizer_* lines above with:
+#   statement_vectorizer_type="embeddings",
+#   statement_embedding_model="all-MiniLM-L6-v2",
+# And add:
+#   statement_add_ner_features=True,
+# Everything else stays the same. Expect 5–15× slower preprocessing.
+```
+
+---
+
+### Module-by-module rationale
+
+| Module | Key choices | Why |
+|--------|------------|-----|
+| `statement_ds` | Embeddings (full) or TF-IDF ≤ 500 (lean) | Trees can't efficiently split over thousands of sparse TF-IDF columns. Embeddings (384 dense dims) give better signal-per-column. Capped TF-IDF is a fast fallback. |
+| `statement_ds` | `scale='none'` | Trees are split-threshold based and invariant to monotone transforms. Scaling wastes time and changes nothing. |
+| `statement_ds` | Lexical, pollution, spelling, rare-token features on | These become direct split candidates. `upper_ratio`, `exclamation_count`, `spelling_err_count` each capture a different stylistic axis of false claims. |
+| `statement_ds` | Stemming/lemmatization off | No benefit for trees. Trees split on token presence; stem collisions add noise without reducing useful variance. Stopword removal similarly unnecessary. |
+| `subject` | `primary_strategy='most_frequent'` | Most stable across folds. Gives the grouped and frequency features a consistent cardinality across CV splits. |
+| `subject` | `add_grouped_primary=True` + `group_rare=True` | Reduces cardinality to ~10 labels before label encoding. Trees prefer fewer distinct values per column. |
+| `speaker` | `add_grouped_speaker=True` | Hundreds of unique speakers collapse to a manageable set. Without grouping, label encoding on 500+ categories creates splits that generalize poorly. |
+| `speaker` | `add_speaker_primary_true_rate=True` | The single most predictive feature in this dataset — speakers repeat across rows and their credibility is consistent. Must be fold-safe. |
+| `speaker_job` | Title/slash/ampersand/comma flags on | Binary-valued splits that cleanly separate institutional from informal roles without encoding a raw string. |
+| `party_affiliation` | `add_is_major_party`, `add_is_institutional` | Two binary flags cover the most meaningful political segmentation without cardinality issues. Grouped party handles the rest. |
+| `state` | `add_us_region=True` | 4-value categorical (northeast/south/midwest/west/unknown) captures geographic political patterns at lower cardinality than 50-value state encoding. |
+| `feature_engineering` | All interaction keys on | Tree splits on joint keys (`fe_speaker_subject`, `fe_speaker_party`, etc.) give the model free interaction features — it can discover "speaker X on topic Y is unreliable" without manual engineering. |
+| `feature_engineering` | All true-rate aggregates on (fold-safe) | `fe_speaker_true_rate` and `fe_subject_true_rate` are powerful numeric features for gradient boosting. Requires `fe_label_col` set and CV fold discipline. |
+| `feature_engineering` | All text-style counts on | `fe_absolutist_count`, `fe_hedge_count`, `fe_negation_count` are cheap to compute and give trees a linguistic signal orthogonal to the structured metadata. |
+
+---
+
+### What to skip for trees
+
+| Option | Why to skip |
+|--------|-------------|
+| `statement_scale` anything other than `'none'` | No effect on splits; adds confusion. |
+| `statement_stopword_removal=True` | Trees learn to ignore high-frequency tokens implicitly; removing them risks discarding signal. |
+| `statement_stemmer` / `statement_lemmatizer` | Reduce vocabulary in ways that help linear models but offer no benefit to trees. |
+| `statement_vectorizer_type='bigram'` without `max_features` | Huge vocabulary; gradient boosting trees become very slow and shallow. Cap at 500–1000 if using bigrams. |
+| `subject_add_topic_list=True` | Produces a Python list column — not numeric, not directly usable by sklearn trees without extra encoding. Use `topic_count` and `multiple_topics_flag` instead. |
+| Any `*_true_rate` computed outside CV folds | Target leakage inflates train-set metrics significantly and collapses on the test set. Always fold-safe. |
+
+---
+
+### Post-preprocessing encoding note
+
+After `preprocess_one_step` runs, string columns still remain for any grouped/clean categoricals not already frequency-encoded:
+
+- `subject_primary_grouped`, `speaker_grouped`, `speaker_job_grouped`, `party_affiliation_grouped`, `state_info_grouped`, `state_info_us_region`
+- Interaction key columns: `fe_speaker_subject`, `fe_speaker_party`, `fe_subject_party`, `fe_speaker_job_subject`, `fe_state_party`
+
+These must be encoded before fitting a sklearn tree. Recommended approach: `OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)` — it assigns a single integer per category, which is exactly what tree splits expect. Do **not** use `OneHotEncoder` for interaction key columns (cardinality is too high).
+
+
+
