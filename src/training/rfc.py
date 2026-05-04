@@ -24,7 +24,8 @@ from sklearn.metrics import (
     roc_auc_score,
     roc_curve,
 )
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from scipy.stats import randint
+from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold, train_test_split
 from sklearn.preprocessing import OrdinalEncoder
 
 
@@ -637,6 +638,19 @@ enable_threshold_tuning = True
 overwrite_threshold     = True    # set False to inspect the grid without updating THRESHOLD
 THRESHOLD_METRIC        = "macro_f1"  # "macro_f1" | "mcc" | "balanced_acc"
 
+# HP search — nested CV: each outer fold runs an inner RandomizedSearchCV to find the
+# best max_features and min_samples_leaf. After all outer folds, the best params are
+# aggregated (mode/median across folds) and used for the final fit on full trainval.
+enable_hp_search  = True
+N_ITER_SEARCH     = 20      # number of parameter combinations to try per outer fold
+N_CV_INNER        = 3       # inner CV folds inside each RandomizedSearchCV
+HP_SEARCH_METRIC  = "f1_macro"   # sklearn scoring string
+param_dist = {
+    "max_features":     [0.2, 0.3, 0.5, "sqrt", "log2"],
+    "min_samples_leaf": randint(1, 8),   # 1–7 inclusive
+    "n_estimators":     [200, 300, 500],
+}
+
 # Whether to compute true-rate features (speaker/subject/party historical false-claim rates)
 # fold-safe inside the CV loop. Most predictive single signal in this dataset.
 enable_true_rate_features = True
@@ -719,6 +733,10 @@ run = wandb.init(
         "true_rate_features":       enable_true_rate_features,
         "true_rate_cols":           list(_tr_group_cols.values()) if enable_true_rate_features else [],
         "all_scales":               "none",
+        "enable_hp_search":         enable_hp_search,
+        "n_iter_search":            N_ITER_SEARCH if enable_hp_search else 0,
+        "n_cv_inner":               N_CV_INNER if enable_hp_search else 0,
+        "hp_search_metric":         HP_SEARCH_METRIC if enable_hp_search else "n/a",
     },
 )
 
@@ -750,15 +768,42 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
             X_fold_train[_feat] = _grp_tr[_src_col].map(_rate_map).fillna(true_rate_fallback).values
             X_fold_val[_feat]   = _grp_vl[_src_col].map(_rate_map).fillna(true_rate_fallback).values
 
-    fold_model = RandomForestClassifier(
-        n_estimators=N_ESTIMATORS,
-        max_depth=MAX_DEPTH,
-        min_samples_leaf=MIN_SAMPLES_LEAF,
-        class_weight=CLASS_WEIGHT,
-        n_jobs=-1,
-        random_state=42,
-    )
-    fold_model.fit(X_fold_train, y_fold_train)
+    if enable_hp_search:
+        # n_jobs=1 on the inner RF to avoid nested parallelism; RandomizedSearchCV
+        # parallelises across param combinations instead.
+        _base_rf = RandomForestClassifier(
+            max_depth=MAX_DEPTH,
+            class_weight=CLASS_WEIGHT,
+            n_jobs=1,
+            random_state=42,
+        )
+        _inner_cv = StratifiedKFold(n_splits=N_CV_INNER, shuffle=True, random_state=42)
+        _inner_search = RandomizedSearchCV(
+            _base_rf,
+            param_distributions=param_dist,
+            n_iter=N_ITER_SEARCH,
+            scoring=HP_SEARCH_METRIC,
+            cv=_inner_cv,
+            refit=True,
+            random_state=42,
+            n_jobs=-1,
+            error_score="raise",
+        )
+        _inner_search.fit(X_fold_train, y_fold_train)
+        fold_model       = _inner_search.best_estimator_
+        fold_best_params = _inner_search.best_params_
+        print(f"    HP best: {fold_best_params}  (inner CV {HP_SEARCH_METRIC}={_inner_search.best_score_:.4f})")
+    else:
+        fold_model = RandomForestClassifier(
+            n_estimators=N_ESTIMATORS,
+            max_depth=MAX_DEPTH,
+            min_samples_leaf=MIN_SAMPLES_LEAF,
+            class_weight=CLASS_WEIGHT,
+            n_jobs=-1,
+            random_state=42,
+        )
+        fold_model.fit(X_fold_train, y_fold_train)
+        fold_best_params = {}
 
     y_fold_pred  = fold_model.predict(X_fold_val)
     y_fold_proba = fold_model.predict_proba(X_fold_val)[:, 1]
@@ -777,6 +822,7 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
         "accuracy":     accuracy_score(y_fold_val, y_fold_pred),
         "mcc":          matthews_corrcoef(y_fold_val, y_fold_pred),
         "balanced_acc": balanced_accuracy_score(y_fold_val, y_fold_pred),
+        "best_params":  fold_best_params,
     }
     cv_fold_metrics.append(fold_metrics)
 
@@ -788,7 +834,7 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
         f"Bal-Acc={fold_metrics['balanced_acc']:.4f}  "
         f"({time()-_fold_t:.1f}s)"
     )
-    wandb.log({
+    _wandb_fold = {
         "cv/fold":         fold_idx,
         "cv/roc_auc":      fold_metrics["roc_auc"],
         "cv/pr_auc":       fold_metrics["pr_auc"],
@@ -799,7 +845,12 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
         "cv/accuracy":     fold_metrics["accuracy"],
         "cv/mcc":          fold_metrics["mcc"],
         "cv/balanced_acc": fold_metrics["balanced_acc"],
-    })
+    }
+    if enable_hp_search and fold_best_params:
+        _wandb_fold["hp/fold_max_features"]     = str(fold_best_params.get("max_features"))
+        _wandb_fold["hp/fold_min_samples_leaf"] = fold_best_params.get("min_samples_leaf")
+        _wandb_fold["hp/fold_n_estimators"]     = fold_best_params.get("n_estimators")
+    wandb.log(_wandb_fold)
 
 
 # -----------------------------------------------------------------------------
@@ -823,6 +874,59 @@ cv_table = wandb.Table(
     ],
 )
 wandb.log({"cv/folds_table": cv_table, **cv_summary})
+
+
+# -----------------------------------------------------------------------------
+# HP aggregation — choose final hyperparameters from nested CV results
+# -----------------------------------------------------------------------------
+# Default: fall back to the fixed values from model config if hp search is off.
+_best_params_final = {
+    "n_estimators":     N_ESTIMATORS,
+    "max_features":     "sqrt",
+    "min_samples_leaf": MIN_SAMPLES_LEAF,
+}
+
+if enable_hp_search:
+    from collections import Counter
+    print(f"\n[SECTION] Aggregating HP search results  [{_now()}]")
+
+    _all_fold_params = [m["best_params"] for m in cv_fold_metrics if m.get("best_params")]
+
+    # Categorical / list HPs: pick the mode across folds
+    for _hp in ["max_features", "n_estimators"]:
+        _vals = [p[_hp] for p in _all_fold_params if _hp in p]
+        if _vals:
+            _counts = Counter(_vals).most_common()
+            _mode   = _counts[0][0]
+            _best_params_final[_hp] = _mode
+            print(f"  {_hp:25s}: {_counts}  → chosen: {_mode}")
+
+    # Integer HPs: pick the median across folds
+    for _hp in ["min_samples_leaf"]:
+        _vals = [p[_hp] for p in _all_fold_params if _hp in p]
+        if _vals:
+            _median = int(np.median(_vals))
+            _best_params_final[_hp] = _median
+            print(f"  {_hp:25s}: {sorted(_vals)}  → median: {_median}")
+
+    print(f"\n  Final HP for fit: {_best_params_final}")
+    wandb.log({
+        "hp/final_max_features":     str(_best_params_final["max_features"]),
+        "hp/final_min_samples_leaf": _best_params_final["min_samples_leaf"],
+        "hp/final_n_estimators":     _best_params_final["n_estimators"],
+        "hp/search_table": wandb.Table(
+            columns=["fold", "max_features", "min_samples_leaf", "n_estimators"],
+            data=[
+                [
+                    m["fold"],
+                    str(m["best_params"].get("max_features", "n/a")),
+                    m["best_params"].get("min_samples_leaf", "n/a"),
+                    m["best_params"].get("n_estimators", "n/a"),
+                ]
+                for m in cv_fold_metrics
+            ],
+        ),
+    })
 
 
 # -----------------------------------------------------------------------------
@@ -884,9 +988,10 @@ if enable_true_rate_features and _tr_group_cols:
         _final_rate_maps[_feat] = _rate_map.to_dict()
 
 model = RandomForestClassifier(
-    n_estimators=N_ESTIMATORS,
+    n_estimators=_best_params_final["n_estimators"],
     max_depth=MAX_DEPTH,
-    min_samples_leaf=MIN_SAMPLES_LEAF,
+    min_samples_leaf=_best_params_final["min_samples_leaf"],
+    max_features=_best_params_final["max_features"],
     class_weight=CLASS_WEIGHT,
     n_jobs=-1,
     random_state=42,

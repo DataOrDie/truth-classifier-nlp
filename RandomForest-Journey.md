@@ -356,6 +356,24 @@ N_ITER_SEARCH = 20
 
 **Expected impact:** The flat importance distribution suggests many splits are being wasted on weak features. Reducing `max_features` forces the model to find stronger splits. Estimate +0.02–0.04 macro F1.
 
+Inside each outer CV fold:                                                                                                     
+  - Builds a RandomizedSearchCV (20 iterations, 3-fold inner CV, scored on f1_macro)                                             
+  - Searches max_features in [0.2, 0.3, 0.5, "sqrt", "log2"], min_samples_leaf in 1–7, n_estimators in [200, 300, 500]           
+  - Uses n_jobs=1 on the inner RF to avoid nested parallelism; the outer search uses n_jobs=-1                                   
+  - Prints and logs the best params + inner CV score per fold                                                                    
+                                                            
+  After outer CV:
+  - Aggregates best params: mode for max_features / n_estimators, median for min_samples_leaf
+  - Logs a W&B table with per-fold params and the final chosen values
+
+  Final fit:
+  - Uses the aggregated best params instead of the fixed defaults
+
+  The CV will be ~20x slower per fold (20 search iterations × 3 inner folds each). With 5 outer folds that's 300 inner RF fits
+  before the final fit. Expect 10–30 minutes depending on your machine.
+
+
+
 ---
 
 ### Step 4 — Switch TF-IDF → sentence embeddings
