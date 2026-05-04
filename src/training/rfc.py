@@ -121,9 +121,11 @@ statement_remove_html = True
 statement_remove_urls = True
 statement_replace_numbers = False
 statement_number_token = '<NUM>'
-# Trees learn to split around high-frequency tokens naturally;
-# stopword removal can destroy signal that linear models can't use but trees can.
-statement_stopword_removal = False
+# Stopword removal is enabled here to clean the TF-IDF vocabulary — the initial
+# run showed "the", "in", "of" in the top-30 features, consuming importance from
+# real signals. keep_negations=True preserves "not", "never", "no", "n't" so the
+# fe_negation_count and absolutist features computed from statement_clean are unaffected.
+statement_stopword_removal = True
 statement_keep_negations = True
 statement_remove_punctuation = False
 # Stemming and lemmatization compress vocabulary to help linear models;
@@ -148,7 +150,7 @@ statement_ner_model = 'en_core_web_sm'
 statement_vectorizer_type = 'tfidf'
 statement_vectorizer_max_features = 500
 statement_vectorizer_min_df = 2
-statement_vectorizer_max_df = 0.9
+statement_vectorizer_max_df = 0.7   # initial run: 0.9 let "the","in","of" survive; 0.7 cuts them
 statement_embedding_model = 'all-MiniLM-L6-v2'
 statement_fitted_vectorizer = None
 
@@ -553,8 +555,19 @@ print(f"  Rows: {len(df_processed):,}  |  Total columns: {df_processed.shape[1]}
 print("[SECTION] Categorical encoding")
 
 _all_obj_cols = df_processed.select_dtypes(include="object").columns.tolist()
-# Raw text columns: never useful as tree features
-_text_cols = {c for c in _all_obj_cols if c.endswith(("_clean", "_original"))}
+# Raw text columns: never useful as tree features.
+# Drop anything ending in _clean or _original, PLUS any original source columns
+# that survived preprocessing (e.g. 'statement' when keep_original=False but the
+# column is not removed by the module). In the initial run 'statement' leaked into
+# the encoder and was assigned near-unique integers — effectively a row ID.
+_source_cols = {
+    statement_source_col, speaker_source_col, subject_source_col,
+    speaker_job_source_col, party_affiliation_source_col, state_source_col,
+}
+_text_cols = (
+    {c for c in _all_obj_cols if c.endswith(("_clean", "_original"))}
+    | (_source_cols & set(_all_obj_cols))
+)
 # Encodable categoricals: grouped values, regions, interaction keys
 _cat_cols = [c for c in _all_obj_cols if c not in _text_cols and c != label_source_col]
 
