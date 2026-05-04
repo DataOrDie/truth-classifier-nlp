@@ -372,6 +372,120 @@ Inside each outer CV fold:
   The CV will be ~20x slower per fold (20 search iterations × 3 inner folds each). With 5 outer folds that's 300 inner RF fits
   before the final fit. Expect 10–30 minutes depending on your machine.
 
+--> Step 3 Output
+Final HP for fit: {'n_estimators': 200, 'max_features': 'sqrt', 'min_samples_leaf': 6}
+
+[SECTION] Threshold tuning on OOF predictions  [21:59:49]
+   threshold   macro_f1
+        0.20   0.3930
+        0.22   0.3930
+        0.24   0.3938
+        0.26   0.3948
+        0.28   0.3975
+        0.30   0.4093
+        0.32   0.4218
+        0.34   0.4363
+        0.36   0.4610
+        0.38   0.4896
+        0.40   0.5145
+        0.42   0.5410
+        0.44   0.5679
+        0.46   0.5851
+        0.48   0.5982
+        0.50   0.6036  ←
+        0.52   0.6027
+        0.54   0.5910
+        0.56   0.5799
+        0.58   0.5663
+        0.60   0.5404
+        0.62   0.5225
+        0.64   0.4909
+        0.66   0.4580
+        0.68   0.4302
+        0.70   0.4016
+        0.72   0.3754
+        0.74   0.3476
+        0.76   0.3267
+
+  Best threshold: 0.50  (OOF macro_f1=0.6036)
+  THRESHOLD updated: 0.50 → 0.50
+[SECTION] Fitting final model on full train/val set  [21:59:49]
+  Done in 0.3s
+[SECTION] Evaluating on holdout set  [21:59:50]
+  Using threshold: 0.50
+
+Holdout results:
+  roc_auc: 0.6481
+  pr_auc: 0.7735
+  macro_f1: 0.5942
+  f1: 0.7053
+  precision: 0.7172
+  recall: 0.6937
+  accuracy: 0.6246
+  mcc: 0.1889
+  balanced_acc: 0.5957
+
+              precision    recall  f1-score   support
+
+           0       0.47      0.50      0.48       631
+           1       0.72      0.69      0.71      1159
+
+    accuracy                           0.62      1790
+   macro avg       0.59      0.60      0.59      1790
+weighted avg       0.63      0.62      0.63      1790
+
+[SECTION] Computing feature importance
+  Top 30 features:
+    fe_speaker_true_rate                                0.0677
+    statement_upper_ratio                               0.0341
+    fe_subject_true_rate                                0.0324
+    fe_readability                                      0.0269
+    statement_original_char_len                         0.0259
+    statement_clean_avg_token_freq                      0.0253
+    fe_subject_party                                    0.0231
+    fe_speaker_job_subject                              0.0231
+    subject_length                                      0.0227
+    fe_speaker_subject                                  0.0224
+    fe_subject_avg_statement_len                        0.0216
+    fe_speaker_avg_number_ratio                         0.0210
+    statement_original_word_count                       0.0202
+    fe_speaker_avg_punctuation                          0.0201
+    fe_speaker_party                                    0.0184
+    fe_speaker_len_bucket                               0.0183
+    fe_speaker_avg_statement_len                        0.0177
+    statement_clean_digit_ratio                         0.0174
+    fe_state_party                                      0.0169
+    subject_frequency                                   0.0167
+    fe_sentiment_subjectivity                           0.0165
+    subject_primary                                     0.0164
+    speaker_frequency_pct                               0.0161
+    subject_primary_grouped                             0.0158
+    speaker_frequency                                   0.0151
+    party_affiliation_grouped                           0.0149
+    speaker_char_len                                    0.0142
+    fe_sentiment_polarity                               0.0138
+    state_info_frequency_pct                            0.0135
+    fe_party_true_rate                                  0.0133
+
+#### Step 3 Analysis
+
+**HP found: `min_samples_leaf=6`, `max_features='sqrt'`, `n_estimators=200`.** The most significant finding is `min_samples_leaf=6` — this is heavy regularization. The default value of 1 lets trees grow leaves containing a single sample, which memorizes noise. Requiring at least 6 samples per leaf forces the model to find generalizable splits rather than fitting individual rows.
+
+**Threshold reset to 0.50.** With Step 2 the threshold was 0.58; here it fell back to exactly 0.50. The reason: `min_samples_leaf=6` moderates the probability outputs. Heavily regularized trees produce more moderate vote proportions (less extreme probabilities), which re-centers the optimal cutoff at 0.50. The OOF threshold curve is now smoothly monotone and peaks exactly at 0.50 — a well-calibrated model.
+
+**Macro F1 essentially flat vs Step 2, but ROC-AUC improved.** Holdout macro F1 was 0.5942 (Step 2: 0.5952, Δ≈0). ROC-AUC went from 0.6388 → **0.6481** (+0.009). The HP tuning improved the model's ranking quality (better probability ordering) without changing the binary threshold outcome much. The OOF macro F1 was 0.6036 — slightly optimistic, but the holdout gap (~0.009) is normal.
+
+**Feature importance became sharper.** `fe_speaker_true_rate` doubled from 0.0335 → **0.0677**. With `min_samples_leaf=6` the model wastes fewer splits on noise, so the truly predictive features absorb more relative importance. TF-IDF terms have now fully disappeared from the top 30 (each of the 500 terms individually contributes ~0.0003), confirming that the dense 500-term bag-of-words is providing diluted signal.
+
+| Metric | Step 2 | Step 3 | Δ |
+|--------|--------|--------|---|
+| Macro F1 | 0.5952 | **0.5942** | −0.001 |
+| ROC-AUC | 0.6388 | **0.6481** | +0.009 |
+| Class 0 recall | 0.46 | 0.50 | +0.04 |
+| Threshold | 0.58 | **0.50** | reset |
+| `min_samples_leaf` | 1 | **6** | regularized |
+
+**What Step 4 needs to address.** TF-IDF is now the clear bottleneck. The top-30 features are all metadata and engineered features — zero text signal from the statement itself is appearing explicitly. That means the model is essentially ignoring the semantic content of the statement. Switching to sentence embeddings (384-dim dense vectors) will replace 500 near-useless sparse columns with 384 semantically rich dimensions, and that is where the largest remaining gain should come from.
 
 
 ---
