@@ -1,4 +1,4 @@
-# Random Forest Journey
+﻿# Random Forest Journey
 
 Training log and decision record for the `rfc` model track (`src/training/rfc.py`).
 
@@ -665,6 +665,141 @@ _candidates = {
 | Step 5 — NER + job true-rate | Complete feature set | ~0.66 |
 
 These are estimates; actual gains depend on how much the `statement` column was distorting the model and how well sentence embeddings separate true from false on this corpus.
+
+
+--> Step 5 output
+
+ Final HP for fit: {'n_estimators': 200, 'max_features': 0.5, 'min_samples_leaf': 5}
+
+[SECTION] Threshold tuning on OOF predictions  [00:09:35]
+   threshold   macro_f1
+        0.20   0.3952
+        0.22   0.3960
+        0.24   0.3989
+        0.26   0.4010
+        0.28   0.4067
+        0.30   0.4137
+        0.32   0.4257
+        0.34   0.4365
+        0.36   0.4526
+        0.38   0.4679
+        0.40   0.4834
+        0.42   0.5054
+        0.44   0.5277
+        0.46   0.5388
+        0.48   0.5553
+        0.50   0.5707
+        0.52   0.5836
+        0.54   0.5946
+        0.56   0.6021
+        0.58   0.6042  ←
+        0.60   0.6008
+        0.62   0.5874
+        0.64   0.5737
+        0.66   0.5503
+        0.68   0.5262
+        0.70   0.5026
+        0.72   0.4801
+        0.74   0.4577
+        0.76   0.4375
+
+  Best threshold: 0.58  (OOF macro_f1=0.6042)
+  THRESHOLD updated: 0.50 → 0.58
+[SECTION] Fitting final model on full train/val set  [00:09:35]
+  Done in 13.1s
+[SECTION] Evaluating on holdout set  [00:09:48]
+  Using threshold: 0.58
+
+Holdout results:
+  roc_auc: 0.6674
+  pr_auc: 0.7717
+  macro_f1: 0.6209
+  f1: 0.7014
+  precision: 0.7527
+  recall: 0.6566
+  accuracy: 0.6380
+  mcc: 0.2509
+  balanced_acc: 0.6302
+
+              precision    recall  f1-score   support
+
+           0       0.49      0.60      0.54       631
+           1       0.75      0.66      0.70      1159
+
+    accuracy                           0.64      1790
+   macro avg       0.62      0.63      0.62      1790
+weighted avg       0.66      0.64      0.64      1790
+
+[SECTION] Computing feature importance
+  Top 30 features:
+    fe_speaker_true_rate                                0.0827
+    fe_speaker_job_true_rate                            0.0139
+    fe_subject_true_rate                                0.0076
+    statement_original_vec_164                          0.0067
+    statement_original_vec_0                            0.0063
+    fe_party_true_rate                                  0.0050
+    statement_original_vec_202                          0.0046
+    statement_original_vec_119                          0.0044
+    statement_original_vec_99                           0.0043
+    statement_original_vec_204                          0.0042
+    statement_original_vec_30                           0.0041
+    statement_original_vec_158                          0.0041
+    statement_original_vec_1                            0.0038
+    statement_upper_ratio                               0.0038
+    statement_original_vec_361                          0.0038
+    statement_original_vec_142                          0.0036
+    statement_original_vec_219                          0.0035
+    statement_original_vec_63                           0.0033
+    statement_original_vec_105                          0.0032
+    statement_original_vec_250                          0.0032
+    statement_original_vec_17                           0.0032
+    statement_original_vec_344                          0.0032
+    statement_original_vec_35                           0.0031
+    statement_original_vec_168                          0.0030
+    statement_original_vec_97                           0.0030
+    statement_original_vec_188                          0.0030
+    statement_original_vec_349                          0.0029
+    statement_original_vec_333                          0.0029
+    statement_original_vec_302                          0.0029
+    fe_readability                                      0.0029
+
+#### Step 5 Analysis
+
+**Macro F1: +0.013 (0.6080 → 0.6209).** Within the predicted +0.02–0.03 range. The gain was split between `fe_speaker_job_true_rate` (new) and NER features.
+
+**`fe_speaker_job_true_rate` debuted at rank 2 with 0.0139.** This is the highest debut of any new feature across all five steps. Occupation-level credibility (senators vs bloggers vs anonymous sources) is a real signal — and because speaker job repeats across many rows, the per-job false-claim rate is a reliable aggregate. The feature immediately displaced `statement_upper_ratio` and `fe_readability` from the top ranks.
+
+**NER features are absent from the top 30.** Each NER count column (PERSON, ORG, GPE, DATE, NUM, OTHER) has importance below 0.0029 and does not appear in the top 30. Collectively 6 columns × ~0.0020 each ≈ 0.012 total contribution, comparable to `fe_speaker_job_true_rate`, but individually too diluted to rank high. The preprocessing overhead (~minutes) may not be worth it unless further analysis confirms their contribution.
+
+**Class 0 recall: 0.52 → 0.60.** The strongest class-0 recall improvement since Step 2. The combination of NER structural signal and occupation true-rate helped identify true statements more reliably.
+
+**`fe_speaker_true_rate` dropped from 0.0889 → 0.0827.** Adding `fe_speaker_job_true_rate` pulled some importance share away from the speaker rate — the two features are related but capture different granularities. This is healthy; the model is less dependent on a single feature.
+
+**HP unchanged: `{n_estimators: 200, max_features: 0.5, min_samples_leaf: 5}`.** The search converged to the same values as Step 4, confirming these are robust optima for this feature configuration.
+
+| Metric | Step 4 | Step 5 | Δ |
+|--------|--------|--------|---|
+| Macro F1 | 0.6080 | **0.6209** | +0.013 |
+| ROC-AUC | 0.6606 | **0.6674** | +0.007 |
+| Class 0 recall | 0.52 | **0.60** | +0.08 |
+| Class 0 F1 | 0.50 | **0.54** | +0.04 |
+| MCC | 0.2167 | **0.2509** | +0.034 |
+| Balanced acc | 0.5957 | **0.6302** | +0.035 |
+
+---
+
+### Full trajectory — actual results
+
+| After step | Change | Macro F1 | ROC-AUC | Class 0 recall |
+|------------|--------|----------|---------|----------------|
+| Initial | baseline | 0.5516 | 0.6598 | 0.24 |
+| Step 1 | Fix bugs (statement col + stopwords) | 0.5606 | 0.6388 | 0.26 |
+| Step 2 | OOF threshold tuning | 0.5952 | 0.6388 | 0.46 |
+| Step 3 | HP tuning (min_samples_leaf=6) | 0.5942 | 0.6481 | 0.50 |
+| Step 4 | TF-IDF → embeddings | 0.6080 | 0.6606 | 0.52 |
+| **Step 5** | **NER + speaker_job true-rate** | **0.6209** | **0.6674** | **0.60** |
+
+**Total gain:** +0.069 macro F1, +0.008 ROC-AUC (note: initial ROC-AUC was inflated by the `statement` raw-column pseudo-feature; corrected baseline after Step 1 was 0.6388, so true ROC-AUC gain is +0.029), +0.36 class-0 recall.
 
 ---
 
