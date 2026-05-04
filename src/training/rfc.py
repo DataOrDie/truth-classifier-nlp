@@ -141,7 +141,7 @@ statement_token_freqs = None
 statement_add_spelling_errors = True            # spelling_err_count -- proxy for informal writing
 statement_add_lexical_features = True           # char_len, word_count, upper_ratio, punct counts
 statement_add_pollution_features = True         # tab_count, newline_count, row_spillover_flag
-statement_add_ner_features = False              # slow; set True to add PERSON/ORG/GPE/etc counts
+statement_add_ner_features = True               # adds PERSON, ORG, GPE, DATE, NUM, OTHER counts
 statement_ner_model = 'en_core_web_sm'
 
 # Sentence embeddings (all-MiniLM-L6-v2, 384-dim dense output).
@@ -666,9 +666,10 @@ true_rate_fallback = 0.5    # assigned to groups unseen in the training fold or 
 _tr_group_cols: dict[str, str] = {}
 if enable_true_rate_features:
     _candidates = {
-        "fe_speaker_true_rate": ["speaker_grouped", "speaker_clean"],
-        "fe_subject_true_rate": ["subject_primary_grouped", "subject_primary", "subject_clean"],
-        "fe_party_true_rate":   ["party_affiliation_grouped", "party_affiliation_clean"],
+        "fe_speaker_true_rate":     ["speaker_grouped", "speaker_clean"],
+        "fe_subject_true_rate":     ["subject_primary_grouped", "subject_primary", "subject_clean"],
+        "fe_party_true_rate":       ["party_affiliation_grouped", "party_affiliation_clean"],
+        "fe_speaker_job_true_rate": ["speaker_job_grouped", "speaker_job_clean"],
     }
     for _feat, _src_cols in _candidates.items():
         for _col in _src_cols:
