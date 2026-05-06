@@ -341,4 +341,167 @@ Option A
   - After finding best HP per fold, refit that fold's model with N_ESTIMATORS_CAP=2000 + early stopping on the outer validation set          
   - Record best_iteration_ per fold; final model uses the median across folds                                                                
   - import lightgbm as lgb needed for the callback API  
-  
+
+--> Option A output
+[SECTION] Cross-validation summary  [total CV: 972.9s]
+  roc_auc: 0.6414 ± 0.0116
+  pr_auc: 0.7517 ± 0.0099
+  macro_f1: 0.5954 ± 0.0136
+  f1: 0.6881 ± 0.0196
+  precision: 0.7269 ± 0.0073
+  recall: 0.6538 ± 0.0311
+  accuracy: 0.6169 ± 0.0167
+  mcc: 0.1970 ± 0.0240
+  balanced_acc: 0.6015 ± 0.0118
+
+[SECTION] Aggregating HP search results  [12:40:06]
+  learning_rate            : [(0.05, 3), (0.03, 1), (0.2, 1)]  → chosen: 0.05
+  num_leaves               : [(31, 4), (63, 1)]  → chosen: 31
+  subsample                : [(0.9, 3), (0.8, 1), (1.0, 1)]  → chosen: 0.9
+  colsample_bytree         : [(0.8, 4), (1.0, 1)]  → chosen: 0.8
+  min_child_samples        : [23, 30, 34, 34, 34]  → median: 34
+  n_estimators_used        : [56, 49, 9, 35, 30]  → median: 35
+
+  Final HP for fit: {'n_estimators': 35, 'learning_rate': 0.05, 'num_leaves': 31, 'min_child_samples': 34, 'subsample': 0.9, 'colsample_bytree': 0.8}
+
+[SECTION] Threshold tuning on OOF predictions  [12:40:07]
+   threshold   macro_f1
+        0.20   0.3967
+        0.22   0.4037
+        0.24   0.4137
+        0.26   0.4240
+        0.28   0.4427
+        0.30   0.4646
+        0.32   0.4890
+        0.34   0.5103
+        0.36   0.5265
+        0.38   0.5476
+        0.40   0.5627
+        0.42   0.5773
+        0.44   0.5886
+        0.46   0.5926
+        0.48   0.5950
+        0.50   0.5956
+        0.52   0.5958  ←
+        0.54   0.5883
+        0.56   0.5739
+        0.58   0.5610
+        0.60   0.5438
+        0.62   0.5200
+        0.64   0.4962
+        0.66   0.4755
+        0.68   0.4507
+        0.70   0.4254
+        0.72   0.4000
+        0.74   0.3803
+        0.76   0.3635
+
+  Best threshold: 0.52  (OOF macro_f1=0.5958)
+  THRESHOLD updated: 0.50 → 0.52
+[SECTION] Fitting final model on full train/val set  [12:40:07]
+  Done in 0.2s
+[SECTION] Evaluating on holdout set  [12:40:07]
+  Using threshold: 0.52
+
+Holdout results:
+  roc_auc: 0.6579
+  pr_auc: 0.7675
+  macro_f1: 0.5985
+  f1: 0.6519
+  precision: 0.7606
+  recall: 0.5703
+  accuracy: 0.6056
+  mcc: 0.2301
+  balanced_acc: 0.6203
+
+              precision    recall  f1-score   support
+
+           0       0.46      0.67      0.55       631
+           1       0.76      0.57      0.65      1159
+
+    accuracy                           0.61      1790
+   macro avg       0.61      0.62      0.60      1790
+weighted avg       0.65      0.61      0.61      1790
+
+[SECTION] Computing feature importance
+  Top 30 features:
+    fe_speaker_true_rate                                5623.5527
+    fe_speaker_job_true_rate                            722.0295
+    fe_subject_true_rate                                658.9318
+    fe_party_true_rate                                  350.5934
+    statement_original_vec_0                            328.1543
+    statement_original_vec_119                          303.4027
+    statement_original_vec_164                          282.3297
+    statement_original_vec_250                          273.7770
+    statement_original_vec_99                           237.9048
+    statement_original_PERSON                           234.9121
+    statement_original_vec_158                          186.8150
+    statement_original_vec_30                           175.7675
+    statement_original_vec_291                          170.0308
+    statement_original_vec_219                          165.5078
+    statement_original_vec_11                           155.2890
+    statement_original_vec_349                          153.4865
+    statement_original_vec_5                            152.2606
+    statement_original_vec_202                          147.5132
+    statement_original_vec_35                           141.6220
+    statement_original_vec_204                          141.5779
+    statement_original_vec_142                          137.2632
+    statement_original_vec_1                            134.5625
+    statement_original_vec_188                          129.7262
+    statement_original_vec_354                          127.4332
+    statement_original_vec_132                          124.7602
+    statement_original_vec_58                           124.0706
+    statement_original_vec_17                           121.0830
+    statement_original_vec_71                           119.8087
+    statement_original_vec_333                          118.9630
+    statement_original_vec_361                          114.8876
+
+---
+
+## Analysis of Option A (Early Stopping)
+
+### Verdict: no improvement, early stopping stopped far too soon
+
+| Metric | Initial | Option A | Δ |
+|--------|---------|----------|---|
+| CV Macro F1 | 0.5934 | 0.5954 | +0.002 (noise) |
+| CV ROC-AUC | 0.6520 | 0.6414 | **−0.011** |
+| Holdout Macro F1 | 0.6062 | 0.5985 | **−0.008** |
+| Holdout ROC-AUC | 0.6681 | 0.6579 | **−0.010** |
+| MCC | 0.2226 | 0.2301 | +0.007 |
+| Balanced Acc | 0.6157 | 0.6203 | +0.005 |
+
+Option A is marginally worse overall. The Macro F1 difference is within noise, but ROC-AUC dropped clearly.
+
+### Root cause: early stopping chose only 35 trees (one fold stopped at 9)
+
+`n_estimators_used: [56, 49, 9, 35, 30] → median: 35`
+
+This is the critical signal. LightGBM's early stopping monitors **binary log-loss** on the eval set by default, not Macro F1. These two objectives diverge early in training:
+
+- Log-loss rewards well-calibrated probabilities. After ~30–50 trees the dominant `fe_speaker_true_rate` signal is fully learned and adding more trees starts nudging probabilities away from the log-loss optimum.
+- Macro F1 is a threshold-dependent metric that can keep improving beyond the log-loss plateau, especially for the minority class.
+
+When log-loss stops improving for 50 consecutive rounds, early stopping fires — but the model is still undertrained from a Macro F1 perspective. The fold that stopped at iteration 9 is the extreme case: after 9 trees the validation log-loss was at its best; everything after that made log-loss slightly worse even as Macro F1 improved.
+
+### The true-rate distribution shift amplifies early stopping
+
+True-rate features (`fe_speaker_true_rate`, etc.) are computed on the **training fold** and mapped to the **validation fold** via a groupby mean. The validation fold's true-rate values come from a slightly different distribution than the training fold's (different subset of speakers). This distribution shift means the model's predictions on the validation fold worsen faster than its predictions on unseen data — causing early stopping to fire prematurely.
+
+### HP convergence still prefers minimum complexity
+
+Even with early stopping, the HP search still preferred `num_leaves=31` (4/5 folds) and a low learning rate. This confirms that the conservatism is a property of the feature space, not just the n_estimators choice.
+
+### Feature importance: PERSON entity appeared
+
+`statement_original_PERSON` entered the top 10 (rank 10, gain 234). This is new compared to the initial run. With only 35 trees, the model has less capacity devoted entirely to true-rate splits, so other features get slightly more representation. Still, `fe_speaker_true_rate` dominates at 5623 vs the next feature at 722 (~7.8× ratio, worse than the initial run's 6.7×).
+
+### Lesson learned
+
+Early stopping calibrated to log-loss is not the right lever here. The correct fix is to either:
+- Use Macro F1 directly as the eval metric for early stopping (`eval_metric="macro"` in LightGBM)
+- Or accept a fixed n_estimators and address the deeper problem: `fe_speaker_true_rate` monopolizes all model capacity.
+
+Option B directly attacks the deeper problem.
+
+---
