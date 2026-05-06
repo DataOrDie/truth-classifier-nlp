@@ -761,4 +761,183 @@ OPTION C
   The script is ready to run. One thing to be aware of: adding 2 new HP dimensions effectively quadruples the search space, so 20 random iterations covers
   less of it than before. If the results look noisy, consider bumping N_ITER_SEARCH to 40 before re-running.
 
-  
+  ---> Option C Results
+  [SECTION] Cross-validation summary  [total CV: 662.0s]
+  roc_auc: 0.6496 ± 0.0062
+  pr_auc: 0.7598 ± 0.0051
+  macro_f1: 0.5913 ± 0.0103
+  f1: 0.7377 ± 0.0033
+  precision: 0.7052 ± 0.0072
+  recall: 0.7735 ± 0.0121
+  accuracy: 0.6439 ± 0.0046
+  mcc: 0.1886 ± 0.0173
+  balanced_acc: 0.5896 ± 0.0095
+
+[SECTION] Aggregating HP search results  [15:10:38]
+  n_estimators             : [(500, 2), (300, 2), (800, 1)]  → chosen: 500
+  learning_rate            : [(0.05, 4), (0.03, 1)]  → chosen: 0.05
+  num_leaves               : [(31, 4), (63, 1)]  → chosen: 31
+  subsample                : [(0.8, 2), (0.7, 1), (0.9, 1), (1.0, 1)]  → chosen: 0.8
+  colsample_bytree         : [(0.8, 4), (0.9, 1)]  → chosen: 0.8
+  min_child_samples        : [12, 13, 13, 30, 38]  → median: 13
+
+  Final HP for fit: {'n_estimators': 500, 'learning_rate': 0.05, 'num_leaves': 31, 'min_child_samples': 13, 'subsample': 0.8, 'colsample_bytree': 0.8}
+
+[SECTION] Threshold tuning on OOF predictions  [15:10:38]
+   threshold   macro_f1
+        0.20   0.4767
+        0.22   0.4854
+        0.24   0.4935
+        0.26   0.5064
+        0.28   0.5168
+        0.30   0.5226
+        0.32   0.5304
+        0.34   0.5401
+        0.36   0.5473
+        0.38   0.5573
+        0.40   0.5665
+        0.42   0.5698
+        0.44   0.5752
+        0.46   0.5812
+        0.48   0.5843
+        0.50   0.5916
+        0.52   0.5955
+        0.54   0.5968
+        0.56   0.5987
+        0.58   0.5984
+        0.60   0.6034
+        0.62   0.6035  ←
+        0.64   0.6016
+        0.66   0.6021
+        0.68   0.5976
+        0.70   0.5941
+        0.72   0.5893
+        0.74   0.5851
+        0.76   0.5723
+
+  Best threshold: 0.62  (OOF macro_f1=0.6035)
+  THRESHOLD updated: 0.50 → 0.62
+[SECTION] Fitting final model on full train/val set  [15:10:38]
+  Done in 2.0s
+[SECTION] Evaluating on holdout set  [15:10:40]
+  Using threshold: 0.62
+
+Holdout results:
+  roc_auc: 0.6635
+  pr_auc: 0.7627
+  macro_f1: 0.6100
+  f1: 0.6896
+  precision: 0.7460
+  recall: 0.6411
+  accuracy: 0.6263
+  mcc: 0.2309
+  balanced_acc: 0.6201
+
+              precision    recall  f1-score   support
+
+           0       0.48      0.60      0.53       631
+           1       0.75      0.64      0.69      1159
+
+    accuracy                           0.63      1790
+   macro avg       0.61      0.62      0.61      1790
+weighted avg       0.65      0.63      0.63      1790
+
+[SECTION] Computing feature importance
+  Top 30 features:
+    fe_speaker_true_rate                                7601.3455
+    fe_subject_true_rate                                1018.8975
+    fe_speaker_job_true_rate                            637.6966
+    statement_original_vec_99                           602.1434
+    statement_original_vec_0                            582.9304
+    statement_original_vec_164                          540.4335
+    statement_original_vec_119                          482.8494
+    statement_original_vec_35                           480.1181
+    statement_original_vec_291                          463.0191
+    statement_original_vec_158                          461.5690
+    statement_original_vec_4                            434.2995
+    fe_party_true_rate                                  430.1988
+    statement_original_vec_349                          427.3264
+    statement_original_vec_204                          416.2468
+    statement_original_vec_30                           406.3169
+    statement_original_vec_250                          404.6089
+    statement_upper_ratio                               390.3263
+    statement_original_vec_97                           377.7060
+    statement_original_vec_71                           368.3587
+    statement_original_vec_14                           363.0045
+    statement_original_vec_361                          362.5013
+    statement_original_vec_132                          360.0455
+    statement_original_vec_235                          358.8207
+    statement_original_vec_191                          343.9842
+    statement_original_vec_56                           343.5322
+    statement_original_vec_118                          342.4199
+    statement_original_vec_188                          331.0054
+    statement_original_vec_202                          324.9387
+    statement_original_vec_299                          322.8897
+    statement_original_vec_105                          312.1082
+
+---
+
+## Analysis of Option C (L1/L2 Regularization)
+
+### Verdict: marginal improvement over initial, but worse than Option B — and the experiment was confounded by a code bug
+
+| Metric | Initial | Option B | Option C | Δ vs Initial |
+|--------|---------|---------|---------|-------------|
+| CV Macro F1 | 0.5934 | 0.5947 | 0.5913 | −0.002 (noise) |
+| CV ROC-AUC | 0.6520 | 0.6487 | 0.6496 | −0.002 (noise) |
+| Holdout Macro F1 | 0.6062 | **0.6179** | 0.6100 | +0.004 |
+| Holdout ROC-AUC | 0.6681 | **0.6790** | 0.6635 | −0.005 |
+| MCC | 0.2226 | 0.2358 | 0.2309 | +0.008 |
+| Balanced Acc | 0.6157 | 0.6178 | 0.6201 | +0.004 |
+
+### Critical bug: reg_alpha and reg_lambda were never applied to the final model
+
+The HP aggregation code had hardcoded lists for which params to aggregate. `reg_alpha` and `reg_lambda` were absent from both lists, so they were searched in the inner 3-fold CV (and contributed to selecting other HP combinations), but:
+- They were **never printed in the HP aggregation output** (which is why they don't appear in the "Aggregating HP search results" section)
+- They were **never included in `_best_params_final`**
+- The final `LGBMClassifier` was fit with `reg_alpha=0.0, reg_lambda=0.0` — LightGBM's defaults
+
+The code has been fixed: `reg_alpha` and `reg_lambda` now appear in the aggregation loop, the defaults dict, the final model constructor, and the W&B logging. **Option C needs a clean rerun** for the results to be interpretable.
+
+### What the confounded run still tells us
+
+Even though the reg params didn't make it into the final model, the inner CV searched over all 8 params simultaneously. This changed the HP landscape:
+
+| HP | Initial | Option C |
+|----|---------|---------|
+| `learning_rate` | 0.03 (5/5) | **0.05 (4/5)** |
+| `num_leaves` | 31 (4/5) | 31 (4/5) |
+| `min_child_samples` | 48 (median) | **13 (median)** |
+| `subsample` | 1.0 (4/5) | 0.8 (2/5) |
+| `colsample_bytree` | 0.7 (3/5) | 0.8 (4/5) |
+
+`min_child_samples` dropped from 48 to 13 — a dramatic shift. When `reg_alpha`/`reg_lambda` are in the search space, the inner CV finds that explicit L1/L2 penalties can substitute for high `min_child_samples` — fewer samples per leaf is safe when leaf weights are penalized. But since reg params were dropped from the final model, the final fit got `min_child_samples=13` without the regularization that was supposed to compensate. This likely explains why holdout ROC-AUC was slightly below the initial run despite similar Macro F1.
+
+`learning_rate` shifting from 0.03 to 0.05 is a real signal — with explicit regularization in the search, the model found slightly higher learning rates beneficial. This is also worth observing in the clean rerun.
+
+### Feature importance: speaker true-rate dominance rose to 7.5×
+
+| Feature | Gain | Ratio to #1 |
+|---------|------|------------|
+| `fe_speaker_true_rate` | 7,601 | 1.0× |
+| `fe_subject_true_rate` | 1,018 | 7.5× below |
+| `fe_speaker_job_true_rate` | 637 | 11.9× below |
+
+The dominance ratio got worse vs the initial run (7.5× vs 6.7×). Without reg penalties on the final model, the model leaned even harder on `fe_speaker_true_rate`. `fe_party_true_rate` dropped to rank 12 (gain 430), well below its rank-4 position in Option B.
+
+### Threshold jumped to 0.62 — highest across all runs
+
+The OOF probabilities were even more biased toward class 1 than in the initial run. With `fe_speaker_true_rate` back and the final model's regularization effectively at zero, the class weight imbalance pushed predictions further toward the majority class.
+
+### Summary and next steps
+
+Option C as run is uninterpretable for the L1/L2 question. The bug is fixed — the script is ready for a clean rerun. However, given the pattern across all three options:
+
+| Run | Best lever | Holdout Macro F1 |
+|-----|-----------|-----------------|
+| Initial | — | 0.6062 |
+| Option A | Early stopping | 0.5985 ↓ |
+| Option B | Drop `fe_speaker_true_rate` | **0.6179** ↑ |
+| Option C (buggy) | L1/L2 (not applied) | 0.6100 |
+
+Option B remains the best single-lever result. A clean Option C rerun is worth doing to see whether the reg params themselves help beyond what `min_child_samples` already provides, but the gains are unlikely to exceed Option B's holdout improvement. Moving to CatBoost is the higher-leverage next step.

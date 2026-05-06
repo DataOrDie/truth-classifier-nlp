@@ -899,6 +899,8 @@ _best_params_final = {
     "min_child_samples": 20,
     "subsample":         0.8,
     "colsample_bytree":  0.8,
+    "reg_alpha":         0.0,
+    "reg_lambda":        0.0,
 }
 
 if enable_hp_search:
@@ -908,7 +910,8 @@ if enable_hp_search:
     _all_fold_params = [m["best_params"] for m in cv_fold_metrics if m.get("best_params")]
 
     # List HPs: pick the mode across folds
-    for _hp in ["n_estimators", "learning_rate", "num_leaves", "subsample", "colsample_bytree"]:
+    for _hp in ["n_estimators", "learning_rate", "num_leaves", "subsample", "colsample_bytree",
+                "reg_alpha", "reg_lambda"]:
         _vals = [p[_hp] for p in _all_fold_params if _hp in p]
         if _vals:
             _counts = Counter(_vals).most_common()
@@ -932,8 +935,10 @@ if enable_hp_search:
         "hp/final_min_child_samples": _best_params_final["min_child_samples"],
         "hp/final_subsample":         _best_params_final["subsample"],
         "hp/final_colsample_bytree":  _best_params_final["colsample_bytree"],
+        "hp/final_reg_alpha":         _best_params_final["reg_alpha"],
+        "hp/final_reg_lambda":        _best_params_final["reg_lambda"],
         "hp/search_table": wandb.Table(
-            columns=["fold", "n_estimators", "learning_rate", "num_leaves", "min_child_samples", "subsample", "colsample_bytree"],
+            columns=["fold", "n_estimators", "learning_rate", "num_leaves", "min_child_samples", "subsample", "colsample_bytree", "reg_alpha", "reg_lambda"],
             data=[
                 [
                     m["fold"],
@@ -943,6 +948,8 @@ if enable_hp_search:
                     m["best_params"].get("min_child_samples", "n/a"),
                     m["best_params"].get("subsample", "n/a"),
                     m["best_params"].get("colsample_bytree", "n/a"),
+                    m["best_params"].get("reg_alpha", "n/a"),
+                    m["best_params"].get("reg_lambda", "n/a"),
                 ]
                 for m in cv_fold_metrics
             ],
@@ -1015,6 +1022,8 @@ model = LGBMClassifier(
     min_child_samples=_best_params_final["min_child_samples"],
     subsample=_best_params_final["subsample"],
     colsample_bytree=_best_params_final["colsample_bytree"],
+    reg_alpha=_best_params_final["reg_alpha"],
+    reg_lambda=_best_params_final["reg_lambda"],
     class_weight=CLASS_WEIGHT,
     n_jobs=-1,
     random_state=42,
