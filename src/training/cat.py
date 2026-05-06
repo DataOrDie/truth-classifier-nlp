@@ -664,10 +664,11 @@ param_dist = {
     "bagging_temperature": [0.0, 0.5, 1.0],
 }
 
-# True-rate features are all included. CatBoost's ordered boosting reduces the
-# risk of one feature monopolising capacity — a key problem for LGBM with
-# fe_speaker_true_rate. All four are kept to give CatBoost the full signal.
+# Option B: drop fe_speaker_true_rate — same intervention that gave LGBM +0.012 holdout F1.
+# CatBoost initial run showed ordered boosting didn't reduce its 8.76x dominance ratio.
+# Dropping it lets the other three true-rate features and native categoricals fill the gap.
 enable_true_rate_features = True
+drop_speaker_true_rate    = True   # Option B: exclude fe_speaker_true_rate
 true_rate_fallback = 0.5
 
 
@@ -680,11 +681,12 @@ true_rate_fallback = 0.5
 _tr_group_cols: dict[str, str] = {}
 if enable_true_rate_features:
     _candidates = {
-        "fe_speaker_true_rate":     ["speaker_grouped", "speaker_clean"],
         "fe_subject_true_rate":     ["subject_primary_grouped", "subject_primary", "subject_clean"],
         "fe_party_true_rate":       ["party_affiliation_grouped", "party_affiliation_clean"],
         "fe_speaker_job_true_rate": ["speaker_job_grouped", "speaker_job_clean"],
     }
+    if not drop_speaker_true_rate:
+        _candidates["fe_speaker_true_rate"] = ["speaker_grouped", "speaker_clean"]
     for _feat, _src_cols in _candidates.items():
         for _col in _src_cols:
             if _col in df_processed.columns:
@@ -794,6 +796,11 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
         _best_inner_score = -np.inf
         fold_best_params  = {}
 
+        def _cast(v):
+            if isinstance(v, np.integer): return int(v)
+            if isinstance(v, np.floating): return float(v)
+            return v
+
         for _trial in range(N_ITER_SEARCH):
             _trial_params = {k: _rng.choice(v) for k, v in param_dist.items()}
 
@@ -808,8 +815,7 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
                               if c in _Xi_tr.columns]
 
                 _m = CatBoostClassifier(
-                    **{k: int(v) if isinstance(v, np.integer) else v
-                       for k, v in _trial_params.items()},
+                    **{k: _cast(v) for k, v in _trial_params.items()},
                     cat_features=_inner_cat,
                     auto_class_weights='Balanced',
                     thread_count=-1,
@@ -825,8 +831,7 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
             _mean = float(np.mean(_trial_scores))
             if _mean > _best_inner_score:
                 _best_inner_score = _mean
-                fold_best_params  = {k: int(v) if isinstance(v, np.integer) else v
-                                     for k, v in _trial_params.items()}
+                fold_best_params  = {k: _cast(v) for k, v in _trial_params.items()}
 
         # Refit best HP on the full outer fold training set
         fold_model = CatBoostClassifier(
