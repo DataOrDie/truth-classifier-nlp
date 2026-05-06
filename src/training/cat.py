@@ -10,6 +10,31 @@ import numpy as np
 import pandas as pd
 import wandb
 from catboost import CatBoostClassifier
+
+
+class _CatBoostCV(CatBoostClassifier):
+    """CatBoostClassifier wrapper that satisfies sklearn's clone() protocol.
+
+    CatBoost normalises several constructor params internally (cat_features,
+    class_weights, auto_class_weights, etc.), so its get_params() returns
+    different values than what the constructor received. sklearn's clone()
+    reconstructs the estimator from get_params() and then checks equality —
+    the mismatch raises RuntimeError. This wrapper stores the raw kwargs
+    before CatBoost can touch them and returns them verbatim from get_params().
+    """
+    def __init__(self, **kwargs):
+        object.__setattr__(self, '_sklearn_params', kwargs.copy())
+        super().__init__(**kwargs)
+
+    def get_params(self, deep=True):
+        return object.__getattribute__(self, '_sklearn_params').copy()
+
+    def set_params(self, **params):
+        stored = object.__getattribute__(self, '_sklearn_params')
+        stored.update(params)
+        return super().set_params(**params)
+
+
 from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
@@ -786,9 +811,9 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
         # calls receive it automatically without needing a custom fit wrapper.
         _cat_indices = [X_fold_train.columns.get_loc(c) for c in _cat_feature_names
                         if c in X_fold_train.columns]
-        _base_cat = CatBoostClassifier(
+        _base_cat = _CatBoostCV(
             cat_features=_cat_indices,
-            auto_class_weights='Balanced',  # avoids clone() RuntimeError with class_weights list
+            auto_class_weights='Balanced',
             thread_count=1,
             random_seed=42,
             verbose=0,
@@ -812,7 +837,7 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
     else:
         _cat_indices = [X_fold_train.columns.get_loc(c) for c in _cat_feature_names
                         if c in X_fold_train.columns]
-        fold_model = CatBoostClassifier(
+        fold_model = _CatBoostCV(
             iterations=500,
             learning_rate=0.05,
             depth=6,

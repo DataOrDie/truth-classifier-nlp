@@ -166,7 +166,7 @@ If `fe_speaker_true_rate` still dominates at 6–7×, CatBoost is not overcoming
 
 | Issue | Likely cause | Fix |
 |-------|-------------|-----|
-| `RuntimeError: Cannot clone object ... modifies parameter class_weights` | CatBoost normalises `class_weights` float list internally; `get_params()` returns a different value than the constructor received, failing sklearn's post-clone equality check | **Fixed**: use `auto_class_weights='Balanced'` for inner CV (string round-trips correctly); `class_weights=CLASS_WEIGHTS` only on the final model where no clone occurs |
+| `RuntimeError: Cannot clone object ... modifies parameter cat_features` (or `class_weights`, `auto_class_weights`) | CatBoost normalises several constructor params internally; `get_params()` returns different values than the constructor received, failing sklearn's post-clone equality check | **Fixed**: `_CatBoostCV` wrapper class stores raw `**kwargs` before `super().__init__()` and returns them verbatim from `get_params()`. Used for all CV estimators; the final model uses plain `CatBoostClassifier` (no clone needed). |
 | CatBoost verbose output floods console despite `verbose=0` | Some versions use `silent=True` | Add `silent=True` to constructor alongside `verbose=0` |
 | `cat_features` index mismatch error | True-rate columns shift indices if added after `_cat_feature_names` is built | Already handled — indices recomputed per fold from `X_fold_train.columns.get_loc()` |
 | `RandomizedSearchCV` with CatBoost is slower than expected | CatBoost is multi-threaded but `thread_count=1` limits it in inner CV | Expected — inner CV is the bottleneck; outer folds run sequentially |
