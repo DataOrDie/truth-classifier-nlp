@@ -323,7 +323,7 @@ fe_add_negation_count = True
 fe_add_hedge_count = True
 fe_add_absolutist_count = True
 fe_add_numeral_count = True
-fe_add_proper_noun_count = True
+fe_add_proper_noun_count = False  # statement_original is dropped before FE runs (statement_keep_original=False)
 fe_add_readability = True
 fe_add_sentiment = True
 
@@ -576,7 +576,8 @@ _cat_cols = [c for c in _all_obj_cols if c not in _text_cols and c != label_sour
 print(f"  Text columns dropped    : {sorted(_text_cols)}")
 print(f"  Categorical cols encoded: {_cat_cols}")
 
-ordinal_enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+ordinal_enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1,
+                             dtype=int)
 _cat_encoded = pd.DataFrame(
     ordinal_enc.fit_transform(df_processed[_cat_cols]),
     columns=_cat_cols,

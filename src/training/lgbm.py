@@ -322,7 +322,7 @@ fe_add_negation_count = True
 fe_add_hedge_count = True
 fe_add_absolutist_count = True
 fe_add_numeral_count = True
-fe_add_proper_noun_count = True
+fe_add_proper_noun_count = False  # statement_original is dropped before FE runs (statement_keep_original=False)
 fe_add_readability = True
 fe_add_sentiment = True
 

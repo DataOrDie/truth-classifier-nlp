@@ -182,3 +182,208 @@ If `fe_speaker_true_rate` still dominates at 6–7×, CatBoost is not overcoming
 2. **If CatBoost ≈ Option B**: try CatBoost + Option B together (drop `fe_speaker_true_rate` and let CatBoost work on the remaining features).
 3. **If CatBoost ≤ LGBM initial**: the bottleneck is the feature space, not the model — investigate bigger embeddings (`all-mpnet-base-v2`, 768-dim) or fine-tuned transformers.
 4. **Stacking**: combine OOF probas from LR + RFC + LGBM-optB + CatBoost as inputs to a meta-LR. Even modest individual models produce complementary errors — stacking often yields +1–2 F1 points at very low implementation cost.
+
+
+---
+
+## Initial Run Analysis
+
+### Performance vs expectations
+
+| Metric | Expected | Actual | vs LGBM Option B |
+|--------|----------|--------|-----------------|
+| CV Macro F1 | 0.60–0.63 | **0.6002** | +0.0055 vs 0.5947 |
+| Holdout Macro F1 | 0.62–0.65 | **0.6184** | +0.0005 vs 0.6179 ← new best |
+| Holdout ROC-AUC | 0.68–0.72 | **0.6653** | -0.0137 vs 0.6790 |
+| Training time | 20–35 min | **98 min** | 3–5× slower than LGBM |
+
+The result is a narrow win for Macro F1 (+0.0005 over Option B) but a clear loss on ROC-AUC (-0.0137). This is a mixed outcome: CatBoost produces better decisions at the tuned threshold but less well-separated probability scores overall.
+
+### Threshold: first crossing below 0.5
+
+All LGBM runs required a threshold above 0.5 (range: 0.52–0.58) to compensate for the model's tendency to assign majority-class probabilities. CatBoost tuned to **0.48** — the first time a model in this project has crossed below 0.5. The OOF threshold curve peaks sharply at 0.48 and falls steadily on both sides, indicating a well-defined optimum.
+
+This confirms the expected calibration improvement from ordered boosting and symmetric trees. The class weighting (`auto_class_weights='Balanced'`) is interacting correctly with the boosting mechanism — the model is genuinely assigning higher probability of class 1 rather than relying on a post-hoc threshold shift to overcome the imbalance.
+
+### HP convergence
+
+| Parameter | Chosen | Votes (5 folds) | Interpretation |
+|-----------|--------|-----------------|----------------|
+| `iterations` | 500 | 3/5 | Consistent with LGBM — mid-range preferred |
+| `learning_rate` | 0.03 | 4/5 | Near-unanimous: slow learning wins again |
+| `depth` | 4 | 3/5 | Shallowest option selected — strong regularisation needed |
+| `l2_leaf_reg` | 5 | 2/5 | Tied with 1 — no strong preference |
+| `border_count` | 64 | 3/5 | Moderate histogram bins |
+| `bagging_temperature` | 0.0 | 3/5 | No Bayesian bootstrap noise preferred |
+
+`depth=4` is the most informative result. CatBoost's symmetric trees at depth 4 produce 2⁴ = 16 leaf patterns per tree. Combined with `bagging_temperature=0.0` (no subsample randomness), the model favours a conservative, low-variance configuration on this dataset. This is consistent with the 8,950-sample size — deeper symmetric trees generalise poorly when data is limited.
+
+`learning_rate=0.03` winning 4/5 folds matches LGBM's pattern exactly. The optimal learning rate is a dataset property (noise level, feature scale, imbalance ratio) — it doesn't change with the model architecture.
+
+### Feature importance — dominance ratio
+
+`fe_speaker_true_rate` scores **21.9** (PredictionValuesChange); the next feature, `fe_subject_true_rate`, scores **2.53**. Raw ratio: **8.76×**.
+
+This appears worse than LGBM's 6.7–7.9× gain ratio, but the comparison is not direct. PredictionValuesChange measures the average absolute change in predicted value when a feature is randomly shuffled — it is dominated by features whose signal is concentrated rather than distributed. LGBM's gain is cumulative across all splits in all trees; a feature used shallowly in many trees accumulates large gain even if each split contributes little. The two metrics compress differently, so the ratio cannot be compared to LGBM's numerically.
+
+What matters: ordered boosting did not achieve the < 3× reduction in dominance ratio that was hoped for. `fe_speaker_true_rate` remains the single most important feature by a wide margin. The dominance problem is not solved.
+
+### What ordered boosting did accomplish
+
+Despite the unresolved dominance, two positive signals appear in the importance table:
+
+**`speaker_grouped` at rank 3 (1.4629)** — this is a native categorical feature that LGBM could only treat as an ordinal integer. CatBoost's internal target statistics extracted enough signal to place it above `fe_party_true_rate` and `fe_speaker_job_true_rate`. This is direct evidence that native categorical handling is working.
+
+**`fe_subject_true_rate` at rank 2 (2.53)** — substantially higher than any non-speaker feature seen in LGBM. CatBoost is distributing importance more broadly across the four true-rate features rather than concentrating everything in `fe_speaker_true_rate`.
+
+**Embedding dimensions collectively** — approximately 20 embedding dims appear in the top 30 (all with scores 0.55–1.20), representing a significant aggregate share. The embeddings are contributing signal.
+
+**`statement_original_PERSON` at rank 12 (0.89)** — NER PERSON count is the highest-ranked NER feature, confirming that named entity information adds value beyond what the embedding captures.
+
+### Class recall balance
+
+| | Precision | Recall | F1 |
+|---|-----------|--------|----|
+| Class 0 (true) | 0.49 | 0.57 | 0.53 |
+| Class 1 (false) | 0.74 | 0.68 | 0.71 |
+
+Class 0 recall improved to 0.57 (from 0.52 in LGBM Option B at threshold 0.52). The threshold shift to 0.48 is doing its job — more class 0 predictions at the cost of slightly lower class 1 precision. The macro F1 improvement comes from this recall boost.
+
+### Known output display issue
+
+The HP aggregation section shows `np.float64(0.03)` and `np.float64(0.0)` instead of plain `0.03` and `0.0`. This is cosmetic — `_rng.choice()` returns numpy scalars; the `int()` cast handles integer params but leaves floats as numpy types. The actual values used in training are correct. Fix: add `.item()` or `float()` cast alongside the existing `int()` branch.
+
+### Verdict and next direction
+
+CatBoost is the current best model by Macro F1 (0.6184), but the margin over LGBM Option B is within one standard deviation of both models' CV noise. ROC-AUC is lower, meaning the probability ordering is not better — only the threshold calibration improved.
+
+The dominance problem persists under both architectures. The natural next experiment is **CatBoost + Option B**: keep CatBoost's ordered boosting and native categoricals but remove `fe_speaker_true_rate`. If Option B added +0.012 to LGBM and CatBoost's better calibration is complementary, the combination could push into the 0.63+ range. Alternatively, stacking OOF probabilities from LGBM-optB and CatBoost as meta-features captures their complementary error profiles at low implementation cost.
+
+---
+
+## Results Summary
+
+| Model | CV Macro F1 | Holdout Macro F1 | Holdout ROC-AUC | Threshold |
+|-------|------------|-----------------|----------------|-----------|
+| LGBM initial | 0.5934 ± 0.0101 | 0.6062 | 0.6681 | 0.58 |
+| LGBM Option B (drop speaker_true_rate) | 0.5947 ± 0.0136 | 0.6179 | 0.6790 | 0.52 |
+| LGBM Option C (L1/L2 reg) | 0.5910 ± 0.0111 | 0.6069 | 0.6636 | 0.52 |
+| **CatBoost initial** | **0.6002 ± 0.0158** | **0.6184** | 0.6653 | **0.48** |
+
+---
+
+-----------------------------------------
+
+--> Catboost initial run output
+[SECTION] Cross-validation summary  [total CV: 5891.6s]
+  roc_auc: 0.6500 ± 0.0144
+  pr_auc: 0.7603 ± 0.0079
+  macro_f1: 0.6002 ± 0.0158
+  f1: 0.6972 ± 0.0238
+  precision: 0.7295 ± 0.0159
+  recall: 0.6700 ± 0.0481
+  accuracy: 0.6247 ± 0.0184
+  mcc: 0.2071 ± 0.0326
+  balanced_acc: 0.6058 ± 0.0166
+
+[SECTION] Aggregating HP search results  [21:16:12]
+  iterations               : [(500, 3), (300, 2)]  → chosen: 500
+  learning_rate            : [(np.float64(0.03), 4), (np.float64(0.1), 1)]  → chosen: 0.03
+  depth                    : [(4, 3), (6, 2)]  → chosen: 4
+  l2_leaf_reg              : [(5, 2), (1, 2), (10, 1)]  → chosen: 5
+  border_count             : [(64, 3), (32, 2)]  → chosen: 64
+  bagging_temperature      : [(np.float64(0.0), 3), (np.float64(1.0), 2)]  → chosen: 0.0
+
+  Final HP for fit: {'iterations': 500, 'learning_rate': np.float64(0.03), 'depth': 4, 'l2_leaf_reg': 5, 'border_count': 64, 'bagging_temperature': np.float64(0.0)}
+
+[SECTION] Threshold tuning on OOF predictions  [21:16:12]
+   threshold   macro_f1
+        0.20   0.4314
+        0.22   0.4435
+        0.24   0.4539
+        0.26   0.4656
+        0.28   0.4779
+        0.30   0.4933
+        0.32   0.5128
+        0.34   0.5276
+        0.36   0.5445
+        0.38   0.5583
+        0.40   0.5712
+        0.42   0.5803
+        0.44   0.5925
+        0.46   0.6013
+        0.48   0.6062  ←
+        0.50   0.6012
+        0.52   0.6000
+        0.54   0.5948
+        0.56   0.5869
+        0.58   0.5739
+        0.60   0.5623
+        0.62   0.5452
+        0.64   0.5295
+        0.66   0.5113
+        0.68   0.4958
+        0.70   0.4759
+        0.72   0.4575
+        0.74   0.4384
+        0.76   0.4214
+
+  Best threshold: 0.48  (OOF macro_f1=0.6062)
+  THRESHOLD updated: 0.50 → 0.48
+[SECTION] Fitting final model on full train/val set  [21:16:13]
+  Done in 8.0s
+[SECTION] Evaluating on holdout set  [21:16:21]
+  Using threshold: 0.48
+
+Holdout results:
+  roc_auc: 0.6653
+  pr_auc: 0.7644
+  macro_f1: 0.6184
+  f1: 0.7085
+  precision: 0.7438
+  recall: 0.6764
+  accuracy: 0.6397
+  mcc: 0.2413
+  balanced_acc: 0.6243
+
+              precision    recall  f1-score   support
+
+           0       0.49      0.57      0.53       631
+           1       0.74      0.68      0.71      1159
+
+    accuracy                           0.64      1790
+   macro avg       0.62      0.62      0.62      1790
+weighted avg       0.65      0.64      0.64      1790
+
+[SECTION] Computing feature importance
+  Top 30 features:
+    fe_speaker_true_rate                                21.9059
+    fe_subject_true_rate                                2.5340
+    speaker_grouped                                     1.4629
+    fe_party_true_rate                                  1.4578
+    fe_speaker_job_true_rate                            1.4446
+    statement_original_vec_99                           1.2030
+    statement_original_vec_35                           1.1494
+    statement_original_vec_291                          1.0766
+    statement_original_vec_164                          1.0701
+    statement_original_vec_4                            1.0566
+    statement_original_vec_158                          0.9691
+    statement_original_PERSON                           0.8875
+    statement_original_vec_1                            0.8731
+    fe_speaker_party                                    0.8661
+    statement_upper_ratio                               0.7827
+    statement_original_vec_0                            0.7649
+    statement_original_vec_249                          0.7378
+    statement_original_vec_245                          0.7236
+    statement_original_vec_97                           0.7178
+    statement_original_vec_119                          0.7171
+    statement_original_vec_171                          0.6998
+    statement_original_vec_313                          0.6960
+    statement_original_vec_188                          0.6860
+    statement_original_vec_159                          0.6346
+    statement_original_vec_30                           0.6224
+    statement_original_vec_10                           0.6120
+    statement_original_char_len                         0.5925
+    statement_original_vec_329                          0.5793
+    statement_original_vec_37                           0.5778
+    statement_original_vec_14                           0.5537
