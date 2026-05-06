@@ -505,3 +505,16 @@ Early stopping calibrated to log-loss is not the right lever here. The correct f
 Option B directly attacks the deeper problem.
 
 ---
+Reverted (Option A):                                                                    
+  - Removed import lightgbm as lgb                                                                                                           
+  - Removed N_ESTIMATORS_INNER, N_ESTIMATORS_CAP, EARLY_STOPPING_ROUNDS                                                                      
+  - n_estimators: [300, 500, 800] back in param_dist                                                                                         
+  - CV loop back to single-phase refit=True                                                                                                  
+  - HP aggregation and W&B logging restored to initial form 
+
+  Added (Option B):
+  - drop_speaker_true_rate = True config flag (single line to flip back to False if needed)
+  - One _candidates.pop("fe_speaker_true_rate", None) in the true-rate setup
+  - model_name = "lgbm-optB" so the saved model and W&B run are clearly labelled
+  - drop_speaker_true_rate logged to W&B config
+  
