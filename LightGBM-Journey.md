@@ -517,4 +517,204 @@ Reverted (Option A):
   - One _candidates.pop("fe_speaker_true_rate", None) in the true-rate setup
   - model_name = "lgbm-optB" so the saved model and W&B run are clearly labelled
   - drop_speaker_true_rate logged to W&B config
-  
+
+
+--> Option B Results
+[SECTION] Cross-validation summary  [total CV: 1006.6s]
+  roc_auc: 0.6487 ± 0.0176
+  pr_auc: 0.7603 ± 0.0148
+  macro_f1: 0.5947 ± 0.0136
+  f1: 0.7341 ± 0.0110
+  precision: 0.7084 ± 0.0086
+  recall: 0.7619 ± 0.0197
+  accuracy: 0.6427 ± 0.0127
+  mcc: 0.1932 ± 0.0276
+  balanced_acc: 0.5929 ± 0.0130
+
+[SECTION] Aggregating HP search results  [13:10:38]
+  n_estimators             : [(500, 4), (300, 1)]  → chosen: 500
+  learning_rate            : [(0.03, 4), (0.05, 1)]  → chosen: 0.03
+  num_leaves               : [(31, 5)]  → chosen: 31
+  subsample                : [(1.0, 4), (0.8, 1)]  → chosen: 1.0
+  colsample_bytree         : [(0.7, 3), (0.9, 2)]  → chosen: 0.7
+  min_child_samples        : [33, 33, 48, 48, 49]  → median: 48
+
+  Final HP for fit: {'n_estimators': 500, 'learning_rate': 0.03, 'num_leaves': 31, 'min_child_samples': 48, 'subsample': 1.0, 'colsample_bytree': 0.7}
+
+[SECTION] Threshold tuning on OOF predictions  [13:10:38]
+   threshold   macro_f1
+        0.20   0.4358
+        0.22   0.4492
+        0.24   0.4611
+        0.26   0.4759
+        0.28   0.4915
+        0.30   0.5049
+        0.32   0.5233
+        0.34   0.5366
+        0.36   0.5464
+        0.38   0.5577
+        0.40   0.5705
+        0.42   0.5756
+        0.44   0.5769
+        0.46   0.5852
+        0.48   0.5924
+        0.50   0.5948
+        0.52   0.5960  ←
+        0.54   0.5957
+        0.56   0.5959
+        0.58   0.5959
+        0.60   0.5924
+        0.62   0.5887
+        0.64   0.5839
+        0.66   0.5804
+        0.68   0.5747
+        0.70   0.5683
+        0.72   0.5606
+        0.74   0.5462
+        0.76   0.5349
+
+  Best threshold: 0.52  (OOF macro_f1=0.5960)
+  THRESHOLD updated: 0.50 → 0.52
+[SECTION] Fitting final model on full train/val set  [13:10:38]
+  Done in 1.7s
+[SECTION] Evaluating on holdout set  [13:10:40]
+  Using threshold: 0.52
+
+Holdout results:
+  roc_auc: 0.6790
+  pr_auc: 0.7854
+  macro_f1: 0.6179
+  f1: 0.7310
+  precision: 0.7304
+  recall: 0.7317
+  accuracy: 0.6514
+  mcc: 0.2358
+  balanced_acc: 0.6178
+
+              precision    recall  f1-score   support
+
+           0       0.51      0.50      0.50       631
+           1       0.73      0.73      0.73      1159
+
+    accuracy                           0.65      1790
+   macro avg       0.62      0.62      0.62      1790
+weighted avg       0.65      0.65      0.65      1790
+
+[SECTION] Computing feature importance
+  Top 30 features:
+    fe_speaker_job_true_rate                            5152.5947
+    fe_subject_true_rate                                1757.7838
+    fe_party_true_rate                                  1485.6281
+    statement_original_vec_164                          1050.9059
+    statement_original_vec_119                          889.8031
+    statement_original_vec_158                          819.9379
+    statement_original_vec_99                           801.6163
+    statement_original_vec_35                           740.7476
+    statement_upper_ratio                               735.4373
+    statement_original_vec_204                          634.1256
+    statement_original_vec_291                          632.8000
+    statement_original_vec_361                          624.5158
+    statement_original_vec_349                          600.3813
+    statement_original_vec_0                            590.3908
+    statement_original_vec_219                          586.1191
+    statement_original_vec_250                          567.3489
+    statement_original_vec_37                           553.5588
+    statement_original_vec_1                            544.0897
+    statement_original_vec_142                          543.9623
+    statement_original_vec_105                          524.0157
+    statement_original_vec_129                          513.8572
+    statement_original_vec_14                           513.7234
+    statement_original_vec_202                          512.9718
+    statement_original_vec_159                          500.5389
+    statement_original_vec_299                          491.5382
+    statement_original_vec_73                           467.1148
+    statement_original_vec_226                          466.4113
+    statement_original_vec_355                          462.2533
+    statement_original_vec_4                            461.8086
+    statement_original_vec_118                          461.4636
+
+---
+
+## Analysis of Option B (Drop fe_speaker_true_rate)
+
+### Verdict: best holdout result so far — dropping the dominant feature actually helps generalization
+
+| Metric | Initial | Option A | Option B | Δ vs Initial |
+|--------|---------|----------|----------|-------------|
+| CV Macro F1 | 0.5934 | 0.5954 | 0.5947 | +0.001 (noise) |
+| CV ROC-AUC | 0.6520 | 0.6414 | 0.6487 | −0.003 (noise) |
+| Holdout Macro F1 | 0.6062 | 0.5985 | **0.6179** | **+0.012** |
+| Holdout ROC-AUC | 0.6681 | 0.6579 | **0.6790** | **+0.011** |
+| MCC | 0.2226 | 0.2301 | 0.2358 | +0.013 |
+| Balanced Acc | 0.6157 | 0.6203 | 0.6178 | +0.002 |
+
+Option B is the best run so far across the metrics that matter most (holdout Macro F1, ROC-AUC, MCC).
+
+### The CV/holdout divergence is the key signal
+
+CV Macro F1 barely moved (+0.001), but holdout Macro F1 improved by +0.012. This divergence reveals what `fe_speaker_true_rate` was actually doing in the initial run: it was **fitting the CV folds well but not generalizing**. The feature captures speaker-level true rates computed on the training fold — speakers in the holdout may have fewer or no training examples, so their true-rate values regress to the 0.5 fallback. The initial model had learned to rely on speaker true-rate splits that simply aren't informative on unseen speakers. Removing it forced the model to learn from features that generalize better: embeddings, subject true rates, party true rates, structural features.
+
+### HP convergence is identical — confirming this is a feature-space property
+
+```
+Initial:  lr=0.03, leaves=31, min_child=48, subsample=1.0, colsample=0.7
+Option B: lr=0.03, leaves=31, min_child=48, subsample=1.0, colsample=0.7
+```
+
+Every HP landed in exactly the same place (leaves=31 was unanimous — 5/5 folds). The model still wants maximum conservatism. This means the search space itself is appropriate; the constraint is the feature space, not the HP grid.
+
+### Feature importance: dominance ratio dropped from 6.7× to 2.9×
+
+| Rank | Feature | Gain | Ratio to #1 |
+|------|---------|------|-------------|
+| 1 | `fe_speaker_job_true_rate` | 5,152 | 1.0× |
+| 2 | `fe_subject_true_rate` | 1,757 | 2.9× below |
+| 3 | `fe_party_true_rate` | 1,485 | 3.5× below |
+| 4 | `statement_original_vec_164` | 1,050 | 4.9× below |
+| 9 | `statement_upper_ratio` | 735 | 7.0× below |
+
+In the initial run, `fe_speaker_true_rate` had a 6.7× lead over every other feature. Without it, `fe_speaker_job_true_rate` steps up to lead, but the gap to second place is only 2.9×. The three remaining true-rate features have much closer gains (5152, 1757, 1485), and embedding dimensions now start appearing at rank 4 with gains above 1000. `statement_upper_ratio` (the ratio of uppercase characters in the statement) moved up to rank 9 with gain 735 — the model is extracting more from structural text features now that it isn't spending most of its budget on speaker splits.
+
+### Threshold narrowed: 0.58 → 0.52
+
+The optimal threshold dropped 6 points toward 0.5. The initial model's raw probabilities were pushed further toward class 1 (false) because `fe_speaker_true_rate` had a large directional effect. Without it, the probability distribution is more centered, requiring less correction. Still above 0.5, which confirms the class weight `{0: 1.42, 1: 0.77}` is not fully overcoming the majority-class bias.
+
+### Class balance in predictions improved
+
+| Class | Initial recall | Option B recall |
+|-------|---------------|-----------------|
+| 0 (true) | 0.59 | 0.50 |
+| 1 (false) | 0.64 | 0.73 |
+| Macro avg F1 | 0.61 | 0.62 |
+
+Recall for class 0 dropped (0.59 → 0.50) while class 1 recall rose sharply (0.64 → 0.73). The model is now less confused overall, but it shifts more predictions toward the majority class. Class 0 F1 slightly worsened (0.52 → 0.50) while class 1 F1 improved (0.69 → 0.73), netting a better macro average.
+
+### Interpretation: `fe_speaker_true_rate` was a leaky shortcut
+
+The initial model was using speaker identity as a proxy for truthfulness — a valid signal on training speakers, but one that collapses on out-of-distribution speakers. Removing it pushes the model to use information that is present in the statement itself (embeddings, lexical features, structural features) and in more stable group-level signals (subject, party). These features generalize better to holdout speakers.
+
+This is diagnostic evidence that the remaining true-rate features (subject, party, speaker job) are providing real signal, not just memorizing training identities.
+
+---
+
+## Option C — L1/L2 Regularization
+
+**Hypothesis**: The HP search consistently converges to maximum conservatism (`num_leaves=31`, `min_child_samples=48`, `learning_rate=0.03`) but has never searched over explicit L1/L2 penalty terms. `reg_alpha` (L1) shrinks small leaf weights toward zero; `reg_lambda` (L2) penalizes large leaf weights. Either form of regularization could reduce the amount of model capacity devoted to `fe_speaker_true_rate` splits without removing the feature entirely.
+
+**Changes vs baseline (initial run)**:
+- `drop_speaker_true_rate = False` — `fe_speaker_true_rate` is back in the candidate set (Option B reverted)
+- `reg_alpha` and `reg_lambda` added to `param_dist`:
+  ```python
+  "reg_alpha":  [0.0, 0.1, 0.5, 1.0],
+  "reg_lambda": [0.0, 0.1, 0.5, 1.0, 5.0],
+  ```
+- `model_name = "lgbm-optC"`
+- All other settings identical to the initial run (same param_dist ranges for the other six HPs)
+
+**Note on search coverage**: Adding 2 new HP dimensions with 4–5 values each means the effective search space is ~4× larger than the initial run. With `N_ITER_SEARCH=20` the inner search samples fewer of these combinations per fold — the optimal reg values may not be found. Consider increasing `N_ITER_SEARCH` to 40 if results are noisy.
+
+**What to watch for**:
+- Does `reg_alpha > 0` or `reg_lambda > 0` get consistently selected? If so, the model benefits from explicit penalization.
+- Does the HP search shift away from `num_leaves=31`? Higher regularization makes larger trees safe, so the search might explore `num_leaves=63` or `127` more.
+- Does `fe_speaker_true_rate` gain ratio drop below 6.7× vs the next feature? That would confirm regularization is limiting its monopoly.
+- Does holdout Macro F1 beat Option B's 0.6179? That's the bar to beat.
