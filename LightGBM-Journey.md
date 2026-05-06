@@ -941,3 +941,190 @@ Option C as run is uninterpretable for the L1/L2 question. The bug is fixed — 
 | Option C (buggy) | L1/L2 (not applied) | 0.6100 |
 
 Option B remains the best single-lever result. A clean Option C rerun is worth doing to see whether the reg params themselves help beyond what `min_child_samples` already provides, but the gains are unlikely to exceed Option B's holdout improvement. Moving to CatBoost is the higher-leverage next step.
+
+--> Option C Rerun
+[SECTION] Cross-validation summary  [total CV: 668.8s]
+  roc_auc: 0.6496 ± 0.0062
+  pr_auc: 0.7598 ± 0.0051
+  macro_f1: 0.5913 ± 0.0103
+  f1: 0.7377 ± 0.0033
+  precision: 0.7052 ± 0.0072
+  recall: 0.7735 ± 0.0121
+  accuracy: 0.6439 ± 0.0046
+  mcc: 0.1886 ± 0.0173
+  balanced_acc: 0.5896 ± 0.0095
+
+[SECTION] Aggregating HP search results  [15:46:14]
+  n_estimators             : [(500, 2), (300, 2), (800, 1)]  → chosen: 500
+  learning_rate            : [(0.05, 4), (0.03, 1)]  → chosen: 0.05
+  num_leaves               : [(31, 4), (63, 1)]  → chosen: 31
+  subsample                : [(0.8, 2), (0.7, 1), (0.9, 1), (1.0, 1)]  → chosen: 0.8
+  colsample_bytree         : [(0.8, 4), (0.9, 1)]  → chosen: 0.8
+  reg_alpha                : [(0.5, 2), (0.1, 2), (0.0, 1)]  → chosen: 0.5
+  reg_lambda               : [(0.1, 2), (0.5, 1), (0.0, 1), (5.0, 1)]  → chosen: 0.1
+  min_child_samples        : [12, 13, 13, 30, 38]  → median: 13
+
+  Final HP for fit: {'n_estimators': 500, 'learning_rate': 0.05, 'num_leaves': 31, 'min_child_samples': 13, 'subsample': 0.8, 'colsample_bytree': 0.8, 'reg_alpha': 0.5, 'reg_lambda': 0.1}
+
+[SECTION] Threshold tuning on OOF predictions  [15:46:14]
+   threshold   macro_f1
+        0.20   0.4767
+        0.22   0.4854
+        0.24   0.4935
+        0.26   0.5064
+        0.28   0.5168
+        0.30   0.5226
+        0.32   0.5304
+        0.34   0.5401
+        0.36   0.5473
+        0.38   0.5573
+        0.40   0.5665
+        0.42   0.5698
+        0.44   0.5752
+        0.46   0.5812
+        0.48   0.5843
+        0.50   0.5916
+        0.52   0.5955
+        0.54   0.5968
+        0.56   0.5987
+        0.58   0.5984
+        0.60   0.6034
+        0.62   0.6035  ←
+        0.64   0.6016
+        0.66   0.6021
+        0.68   0.5976
+        0.70   0.5941
+        0.72   0.5893
+        0.74   0.5851
+        0.76   0.5723
+
+  Best threshold: 0.62  (OOF macro_f1=0.6035)
+  THRESHOLD updated: 0.50 → 0.62
+[SECTION] Fitting final model on full train/val set  [15:46:14]
+  Done in 2.5s
+[SECTION] Evaluating on holdout set  [15:46:16]
+  Using threshold: 0.62
+
+Holdout results:
+  roc_auc: 0.6624
+  pr_auc: 0.7701
+  macro_f1: 0.6052
+  f1: 0.6861
+  precision: 0.7415
+  recall: 0.6385
+  accuracy: 0.6218
+  mcc: 0.2209
+  balanced_acc: 0.6148
+
+              precision    recall  f1-score   support
+
+           0       0.47      0.59      0.52       631
+           1       0.74      0.64      0.69      1159
+
+    accuracy                           0.62      1790
+   macro avg       0.61      0.61      0.61      1790
+weighted avg       0.65      0.62      0.63      1790
+
+[SECTION] Computing feature importance
+  Top 30 features:
+    fe_speaker_true_rate                                7468.5435
+    fe_subject_true_rate                                944.6571
+    statement_original_vec_99                           565.8662
+    statement_original_vec_119                          563.7057
+    fe_speaker_job_true_rate                            559.7658
+    statement_original_vec_164                          535.3845
+    statement_original_vec_0                            503.2225
+    statement_original_vec_158                          483.5501
+    statement_original_vec_291                          427.3804
+    statement_original_vec_349                          419.8663
+    statement_original_vec_30                           409.0508
+    statement_original_vec_35                           403.0864
+    statement_upper_ratio                               399.8472
+    fe_party_true_rate                                  389.7204
+    statement_original_vec_4                            388.2591
+    statement_original_vec_191                          381.1212
+    statement_original_vec_61                           369.4980
+    statement_original_vec_118                          366.5108
+    statement_original_vec_1                            364.9019
+    statement_original_vec_204                          335.4768
+    statement_original_vec_56                           333.5064
+    statement_original_vec_97                           322.3251
+    statement_original_vec_313                          322.0955
+    statement_original_vec_219                          304.6221
+    statement_original_vec_14                           303.5497
+    statement_clean_avg_token_freq                      303.1331
+    statement_original_vec_202                          298.8995
+    statement_original_vec_100                          298.2873
+    statement_original_vec_250                          295.0711
+    statement_original_vec_11                           293.2320
+
+---
+
+## Analysis of Option C Rerun (L1/L2 — clean)
+
+### Verdict: L1/L2 regularization does not improve on the initial baseline
+
+| Metric | Initial | Option B | Option C (buggy) | Option C (clean) | Δ vs Initial |
+|--------|---------|---------|-----------------|-----------------|-------------|
+| CV Macro F1 | 0.5934 | 0.5947 | 0.5913 | 0.5913 | −0.002 (noise) |
+| Holdout Macro F1 | 0.6062 | **0.6179** | 0.6100 | 0.6052 | **−0.001** |
+| Holdout ROC-AUC | 0.6681 | **0.6790** | 0.6635 | 0.6624 | −0.006 |
+| MCC | 0.2226 | 0.2358 | 0.2309 | 0.2209 | −0.002 |
+
+Option C is the worst run across all experiments — worse than the initial baseline on every holdout metric.
+
+### The natural experiment the bug created
+
+Both Option C runs used identical CV phases (same HP search produced identical fold-level results). The only difference is what was passed to the final model:
+
+| | Buggy run | Clean rerun |
+|-|-----------|------------|
+| `reg_alpha` in final model | 0.0 (default) | **0.5** |
+| `reg_lambda` in final model | 0.0 (default) | **0.1** |
+| `min_child_samples` | 13 | 13 |
+| Holdout Macro F1 | 0.6100 | **0.6052** |
+
+The clean rerun is *worse* than the buggy run by −0.005. Applying the aggregated reg values (`reg_alpha=0.5, reg_lambda=0.1`) to the final model hurt generalization vs using defaults (0.0, 0.0). This means the reg values selected by the inner CV helped within the CV folds but over-regularized the final model on the holdout set.
+
+### HP divergence: swapping leaf regularization for weight regularization
+
+The HP search traded `min_child_samples` (48 → 13) against explicit weight penalties (`reg_alpha=0.5`). This tradeoff holds within the 3-fold inner CV splits — small leaves are stable when leaf weights are penalized — but doesn't transfer to the holdout:
+
+| HP | Initial | Option C |
+|----|---------|---------|
+| `min_child_samples` | 48 | **13** |
+| `reg_alpha` | — | 0.5 (L1) |
+| `reg_lambda` | — | 0.1 (L2) |
+
+With min_child_samples=13, each leaf needs only 13 samples. On an 8,950-sample dataset with 500 trees at depth ~7, this allows very fine-grained splits that memorise the training fold. The L1 penalty is supposed to offset this by zeroing small leaf weights, but the combination overfit more than the initial run's simpler `min_child_samples=48`.
+
+### reg_alpha selection was unstable
+
+`reg_alpha` tied at 2 folds each for 0.5 and 0.1. The mode chose 0.5, but 0.1 would have been equally valid. Any holdout improvement from this option likely requires a finer search over the interaction between `min_child_samples` and `reg_alpha/reg_lambda` — the current 20-iteration search can't explore this adequately.
+
+### Feature importance: dominance ratio worsened to 7.9×
+
+| Feature | Gain | Rank |
+|---------|------|------|
+| `fe_speaker_true_rate` | 7,468 | 1 |
+| `fe_subject_true_rate` | 944 | 2 |
+| Best embedding dim | ~565 | 3 |
+| `fe_speaker_job_true_rate` | 559 | 5 |
+| `fe_party_true_rate` | 389 | 14 |
+
+The dominance ratio (7.9×) is worse than the initial run (6.7×) and far worse than Option B (2.9×). L1 regularization didn't meaningfully reduce `fe_speaker_true_rate`'s monopoly — it slightly trimmed all gains proportionally without changing the hierarchy.
+
+`statement_clean_avg_token_freq` appeared at rank 26 — a new feature that hadn't surfaced before. This is a non-leaking aggregate (average token frequency per statement), and its appearance suggests the model is now exploring different features with the lower leaf threshold.
+
+### Summary across all LGBM experiments
+
+| Run | Key change | Holdout Macro F1 | Holdout ROC-AUC |
+|-----|-----------|-----------------|----------------|
+| Initial | Baseline | 0.6062 | 0.6681 |
+| Option A | Early stopping (log-loss) | 0.5985 ↓ | 0.6579 ↓ |
+| **Option B** | **Drop `fe_speaker_true_rate`** | **0.6179 ↑** | **0.6790 ↑** |
+| Option C | L1/L2 regularization | 0.6052 ↓ | 0.6624 ↓ |
+
+**Option B is the best LGBM configuration.** The core finding across all experiments: the feature-dominance problem matters more than any HP lever. Removing the monopoly feature improved holdout results by +0.012; no HP change came close.
+
+The next step — CatBoost — is the right move. CatBoost's ordered boosting builds each tree's target statistics incrementally (each sample's statistic is computed on prior samples only), which naturally limits how much any single feature can dominate early splits.
