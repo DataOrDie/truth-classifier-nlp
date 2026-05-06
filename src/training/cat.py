@@ -627,9 +627,11 @@ print(f"Train/val: {X_trainval.shape[0]:,}   Holdout: {X_holdout.shape[0]:,}   C
 # -----------------------------------------------------------------------------
 # Model configuration
 # -----------------------------------------------------------------------------
-# CatBoost uses class_weights as an ordered list [weight_class0, weight_class1].
-# Same imbalance correction as LGBM/RFC: class 0 (true statements) upweighted.
-CLASS_WEIGHTS = [1.42, 0.77]
+# CLASS_WEIGHTS = [1.42, 0.77] — these are the balanced weights (n / (2 * n_class_i)).
+# CatBoost's auto_class_weights='Balanced' computes the same formula per fold and
+# avoids sklearn's clone() RuntimeError, which fires when CatBoost normalises a
+# float list internally and get_params() returns a different value than the constructor received.
+CLASS_WEIGHTS = [1.42, 0.77]   # kept for the final model (no clone needed there)
 THRESHOLD     = 0.5     # starting point; overwritten by threshold tuning when enabled
 model_name    = "catboost"
 create_kaggle_csv = True
@@ -717,7 +719,7 @@ run = wandb.init(
     project="truth-classifier-catboost",
     config={
         "model":                    "CatBoostClassifier",
-        "class_weights":            str(CLASS_WEIGHTS),
+        "class_weights":            "auto_class_weights=Balanced (≈[1.42, 0.77])",
         "n_cat_features_for_model": len(_cat_feature_names),
         "threshold":                THRESHOLD,
         "cv_folds":                 skf.get_n_splits(),
@@ -786,7 +788,7 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
                         if c in X_fold_train.columns]
         _base_cat = CatBoostClassifier(
             cat_features=_cat_indices,
-            class_weights=CLASS_WEIGHTS,
+            auto_class_weights='Balanced',  # avoids clone() RuntimeError with class_weights list
             thread_count=1,
             random_seed=42,
             verbose=0,
@@ -816,7 +818,7 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
             depth=6,
             l2_leaf_reg=3,
             cat_features=_cat_indices,
-            class_weights=CLASS_WEIGHTS,
+            auto_class_weights='Balanced',
             thread_count=-1,
             random_seed=42,
             verbose=0,
