@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import wandb
+import lightgbm as lgb
 from lightgbm import LGBMClassifier
 from sklearn.metrics import (
     accuracy_score,
@@ -638,12 +639,16 @@ THRESHOLD_METRIC        = "macro_f1"  # "macro_f1" | "mcc" | "balanced_acc"
 # HP search — nested CV: each outer fold runs an inner RandomizedSearchCV to find the
 # best hyperparameters. After all folds, params are aggregated (mode/median) for the
 # final fit on full trainval.
-enable_hp_search  = True
-N_ITER_SEARCH     = 20      # number of parameter combinations to try per outer fold
-N_CV_INNER        = 3       # inner CV folds inside each RandomizedSearchCV
-HP_SEARCH_METRIC  = "f1_macro"   # sklearn scoring string
+# n_estimators is NOT searched here — early stopping determines the optimal value.
+enable_hp_search      = True
+N_ITER_SEARCH         = 20      # number of parameter combinations to try per outer fold
+N_CV_INNER            = 3       # inner CV folds inside each RandomizedSearchCV
+HP_SEARCH_METRIC      = "f1_macro"   # sklearn scoring string
+N_ESTIMATORS_INNER    = 500     # fixed cap used during inner HP search (no early stopping there)
+N_ESTIMATORS_CAP      = 2000    # upper cap for the outer-fold refit with early stopping
+EARLY_STOPPING_ROUNDS = 50      # stop if no improvement for this many consecutive rounds
 param_dist = {
-    "n_estimators":      [300, 500, 800],
+    # n_estimators intentionally omitted — determined per fold by early stopping
     "learning_rate":     [0.03, 0.05, 0.1, 0.2],
     "num_leaves":        [31, 63, 127],
     "min_child_samples": randint(10, 50),   # min samples per leaf — key regularizer
@@ -736,6 +741,9 @@ run = wandb.init(
         "n_iter_search":            N_ITER_SEARCH if enable_hp_search else 0,
         "n_cv_inner":               N_CV_INNER if enable_hp_search else 0,
         "hp_search_metric":         HP_SEARCH_METRIC if enable_hp_search else "n/a",
+        "n_estimators_inner":       N_ESTIMATORS_INNER,
+        "n_estimators_cap":         N_ESTIMATORS_CAP,
+        "early_stopping_rounds":    EARLY_STOPPING_ROUNDS,
     },
 )
 
@@ -767,8 +775,12 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
             X_fold_train[_feat] = _grp_tr[_src_col].map(_rate_map).fillna(true_rate_fallback).values
             X_fold_val[_feat]   = _grp_vl[_src_col].map(_rate_map).fillna(true_rate_fallback).values
 
+    # Phase 1: HP search with a fixed n_estimators — finds the best learning_rate,
+    # num_leaves, etc. without early stopping (RandomizedSearchCV doesn't support
+    # per-inner-fold eval_sets for early stopping).
     if enable_hp_search:
         _base_lgbm = LGBMClassifier(
+            n_estimators=N_ESTIMATORS_INNER,
             class_weight=CLASS_WEIGHT,
             n_jobs=1,
             random_state=42,
@@ -781,28 +793,47 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
             n_iter=N_ITER_SEARCH,
             scoring=HP_SEARCH_METRIC,
             cv=_inner_cv,
-            refit=True,
+            refit=False,   # we refit manually below with early stopping
             random_state=42,
             n_jobs=-1,
             error_score="raise",
         )
         _inner_search.fit(X_fold_train, y_fold_train)
-        fold_model       = _inner_search.best_estimator_
         fold_best_params = _inner_search.best_params_
         print(f"    HP best: {fold_best_params}  (inner CV {HP_SEARCH_METRIC}={_inner_search.best_score_:.4f})")
     else:
-        fold_model = LGBMClassifier(
-            n_estimators=500,
-            learning_rate=0.1,
-            num_leaves=63,
-            min_child_samples=20,
-            class_weight=CLASS_WEIGHT,
-            n_jobs=-1,
-            random_state=42,
-            verbose=-1,
-        )
-        fold_model.fit(X_fold_train, y_fold_train)
-        fold_best_params = {}
+        fold_best_params = {
+            "learning_rate":     0.1,
+            "num_leaves":        63,
+            "min_child_samples": 20,
+            "subsample":         0.8,
+            "colsample_bytree":  0.8,
+        }
+
+    # Phase 2: refit with the best HP params and early stopping on the outer val fold.
+    # This determines the optimal n_estimators without a fixed grid.
+    fold_model = LGBMClassifier(
+        n_estimators=N_ESTIMATORS_CAP,
+        learning_rate=fold_best_params.get("learning_rate", 0.1),
+        num_leaves=fold_best_params.get("num_leaves", 63),
+        min_child_samples=fold_best_params.get("min_child_samples", 20),
+        subsample=fold_best_params.get("subsample", 0.8),
+        colsample_bytree=fold_best_params.get("colsample_bytree", 0.8),
+        class_weight=CLASS_WEIGHT,
+        n_jobs=-1,
+        random_state=42,
+        verbose=-1,
+    )
+    fold_model.fit(
+        X_fold_train, y_fold_train,
+        eval_set=[(X_fold_val, y_fold_val)],
+        callbacks=[
+            lgb.early_stopping(EARLY_STOPPING_ROUNDS, verbose=False),
+            lgb.log_evaluation(period=0),
+        ],
+    )
+    fold_best_params["n_estimators_used"] = fold_model.best_iteration_
+    print(f"    Early stopping: best iteration = {fold_model.best_iteration_} / {N_ESTIMATORS_CAP}")
 
     y_fold_pred  = fold_model.predict(X_fold_val)
     y_fold_proba = fold_model.predict_proba(X_fold_val)[:, 1]
@@ -845,8 +876,8 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
         "cv/mcc":          fold_metrics["mcc"],
         "cv/balanced_acc": fold_metrics["balanced_acc"],
     }
-    if enable_hp_search and fold_best_params:
-        _wandb_fold["hp/fold_n_estimators"]      = fold_best_params.get("n_estimators")
+    if fold_best_params:
+        _wandb_fold["hp/fold_n_estimators_used"] = fold_best_params.get("n_estimators_used")
         _wandb_fold["hp/fold_learning_rate"]     = fold_best_params.get("learning_rate")
         _wandb_fold["hp/fold_num_leaves"]        = fold_best_params.get("num_leaves")
         _wandb_fold["hp/fold_min_child_samples"] = fold_best_params.get("min_child_samples")
@@ -883,7 +914,7 @@ wandb.log({"cv/folds_table": cv_table, **cv_summary})
 # -----------------------------------------------------------------------------
 # Default: fall back to sensible LightGBM defaults if hp search is off.
 _best_params_final = {
-    "n_estimators":      500,
+    "n_estimators":      500,   # overwritten by median of early-stopping best_iteration_ across folds
     "learning_rate":     0.1,
     "num_leaves":        63,
     "min_child_samples": 20,
@@ -898,7 +929,7 @@ if enable_hp_search:
     _all_fold_params = [m["best_params"] for m in cv_fold_metrics if m.get("best_params")]
 
     # List HPs: pick the mode across folds
-    for _hp in ["n_estimators", "learning_rate", "num_leaves", "subsample", "colsample_bytree"]:
+    for _hp in ["learning_rate", "num_leaves", "subsample", "colsample_bytree"]:
         _vals = [p[_hp] for p in _all_fold_params if _hp in p]
         if _vals:
             _counts = Counter(_vals).most_common()
@@ -914,6 +945,13 @@ if enable_hp_search:
             _best_params_final[_hp] = _median
             print(f"  {_hp:25s}: {sorted(_vals)}  → median: {_median}")
 
+    # n_estimators: use median of early-stopping best_iteration_ across folds
+    _n_est_vals = [p["n_estimators_used"] for p in _all_fold_params if p.get("n_estimators_used")]
+    if _n_est_vals:
+        _n_est_median = int(np.median(_n_est_vals))
+        _best_params_final["n_estimators"] = _n_est_median
+        print(f"  {'n_estimators_used':25s}: {_n_est_vals}  → median: {_n_est_median}")
+
     print(f"\n  Final HP for fit: {_best_params_final}")
     wandb.log({
         "hp/final_n_estimators":      _best_params_final["n_estimators"],
@@ -923,11 +961,11 @@ if enable_hp_search:
         "hp/final_subsample":         _best_params_final["subsample"],
         "hp/final_colsample_bytree":  _best_params_final["colsample_bytree"],
         "hp/search_table": wandb.Table(
-            columns=["fold", "n_estimators", "learning_rate", "num_leaves", "min_child_samples", "subsample", "colsample_bytree"],
+            columns=["fold", "n_estimators_used", "learning_rate", "num_leaves", "min_child_samples", "subsample", "colsample_bytree"],
             data=[
                 [
                     m["fold"],
-                    m["best_params"].get("n_estimators", "n/a"),
+                    m["best_params"].get("n_estimators_used", "n/a"),
                     m["best_params"].get("learning_rate", "n/a"),
                     m["best_params"].get("num_leaves", "n/a"),
                     m["best_params"].get("min_child_samples", "n/a"),

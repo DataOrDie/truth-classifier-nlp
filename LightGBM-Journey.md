@@ -334,3 +334,11 @@ param_dist = {
 2. **Move to CatBoost** — CatBoost handles high-cardinality categoricals natively and uses ordered boosting to reduce overfitting. It may handle the `fe_speaker_true_rate` dominance more gracefully.
 3. **Stacking** — even at current LGBM performance, its OOF probas are complementary to LR/RFC OOF probas for a stacking ensemble.
 
+----- 
+Option A 
+ - Remove n_estimators from param_dist — early stopping will determine the optimal number of trees                                        
+  - Inner HP search uses a moderate fixed cap (N_ESTIMATORS_INNER=500) — enough to compare HP combinations                                   
+  - After finding best HP per fold, refit that fold's model with N_ESTIMATORS_CAP=2000 + early stopping on the outer validation set          
+  - Record best_iteration_ per fold; final model uses the median across folds                                                                
+  - import lightgbm as lgb needed for the callback API  
+  
