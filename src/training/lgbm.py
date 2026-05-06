@@ -625,7 +625,7 @@ print(f"Train/val: {X_trainval.shape[0]:,}   Holdout: {X_holdout.shape[0]:,}   C
 # without resampling by scaling the impurity criterion during tree growth.
 CLASS_WEIGHT  = {0: 1.42, 1: 0.77}
 THRESHOLD     = 0.5     # starting point; overwritten by threshold tuning when enabled
-model_name    = "lgbm-optB"
+model_name    = "lgbm-optC"
 create_kaggle_csv = True   # run kaggle_module_forTrees.py after saving to produce submission CSV
 
 # Threshold tuning — searches the OOF probability predictions from the CV loop for
@@ -649,12 +649,14 @@ param_dist = {
     "min_child_samples": randint(10, 50),   # min samples per leaf — key regularizer
     "subsample":         [0.7, 0.8, 0.9, 1.0],
     "colsample_bytree":  [0.7, 0.8, 0.9, 1.0],
+    "reg_alpha":         [0.0, 0.1, 0.5, 1.0],        # L1 regularization on leaf weights
+    "reg_lambda":        [0.0, 0.1, 0.5, 1.0, 5.0],   # L2 regularization on leaf weights
 }
 
-# Option B: drop the dominant speaker true-rate feature to see how much the remaining
-# features contribute on their own. fe_speaker_true_rate had 6.7x the gain of any
-# other feature in the initial run; dropping it forces the model to use other signals.
-drop_speaker_true_rate = True
+# Option C: L1/L2 regularization added to param_dist (reg_alpha, reg_lambda).
+# Reverted from Option B — fe_speaker_true_rate is back in the candidates so this
+# experiment runs against the same baseline as Option A and Option B.
+drop_speaker_true_rate = False
 
 # Whether to compute true-rate features (speaker/subject/party historical false-claim rates)
 # fold-safe inside the CV loop. Most predictive single signal in this dataset.

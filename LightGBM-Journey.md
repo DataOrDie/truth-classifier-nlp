@@ -718,3 +718,47 @@ This is diagnostic evidence that the remaining true-rate features (subject, part
 - Does the HP search shift away from `num_leaves=31`? Higher regularization makes larger trees safe, so the search might explore `num_leaves=63` or `127` more.
 - Does `fe_speaker_true_rate` gain ratio drop below 6.7× vs the next feature? That would confirm regularization is limiting its monopoly.
 - Does holdout Macro F1 beat Option B's 0.6179? That's the bar to beat.
+
+------
+
+OPTION C
+
+ Done. Here's what changed:
+
+  Option B analysis added to LightGBM-Journey.md — key findings documented:
+  - CV stayed flat (+0.001) but holdout jumped +0.012 Macro F1 and +0.011 ROC-AUC, revealing fe_speaker_true_rate was memorizing training speakers rather
+  Option B analysis added to LightGBM-Journey.md — key findings documented:
+  - CV stayed flat (+0.001) but holdout jumped +0.012 Macro F1 and +0.011 ROC-AUC, revealing fe_speaker_true_rate was memorizing training speakers rather
+  than generalizing
+  - Dominance ratio dropped from 6.7× to 2.9× — the feature importance distribution is now healthier
+  than generalizing
+  - Dominance ratio dropped from 6.7× to 2.9× — the feature importance distribution is now healthier
+  - HP convergence is identical to the initial run, confirming the conservatism is a feature-space property, not a grid problem
+  - Threshold narrowed from 0.58 → 0.52
+
+  lgbm.py updated for Option C:
+  - model_name = "lgbm-optC"
+  - drop_speaker_true_rate = False (reverted — Option C runs against the same baseline as A and B)
+  - reg_alpha: [0.0, 0.1, 0.5, 1.0] and reg_lambda: [0.0, 0.1, 0.5, 1.0, 5.0] added to param_dist
+
+  The script is ready to run. One thing to be aware of: adding 2 new HP dimensions effectively quadruples the search space, so 20 random iterations covers
+  less of it than before. If the results look noisy, consider bumping N_ITER_SEARCH to 40 before re-running.
+
+✻ Brewed for 4m 3s
+
+※ recap: Running LightGBM experiments for a fake news classifier, Options A and B are done. Option C (L1/L2 regularization) is configured and ready — run   
+  lgbm.py next.
+  than generalizing
+  - Dominance ratio dropped from 6.7× to 2.9× — the feature importance distribution is now healthier
+  - HP convergence is identical to the initial run, confirming the conservatism is a feature-space property, not a grid problem
+  - Threshold narrowed from 0.58 → 0.52
+
+  lgbm.py updated for Option C:
+  - model_name = "lgbm-optC"
+  - drop_speaker_true_rate = False (reverted — Option C runs against the same baseline as A and B)
+  - reg_alpha: [0.0, 0.1, 0.5, 1.0] and reg_lambda: [0.0, 0.1, 0.5, 1.0, 5.0] added to param_dist
+
+  The script is ready to run. One thing to be aware of: adding 2 new HP dimensions effectively quadruples the search space, so 20 random iterations covers
+  less of it than before. If the results look noisy, consider bumping N_ITER_SEARCH to 40 before re-running.
+
+  
