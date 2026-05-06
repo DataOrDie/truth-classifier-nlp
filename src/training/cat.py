@@ -49,7 +49,7 @@ from sklearn.metrics import (
     roc_auc_score,
     roc_curve,
 )
-from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold, train_test_split
+from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.preprocessing import OrdinalEncoder
 
 
@@ -804,40 +804,65 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
             X_fold_train[_feat] = _grp_tr[_src_col].map(_rate_map).fillna(true_rate_fallback).values
             X_fold_val[_feat]   = _grp_vl[_src_col].map(_rate_map).fillna(true_rate_fallback).values
 
+    _cat_indices = [X_fold_train.columns.get_loc(c) for c in _cat_feature_names
+                    if c in X_fold_train.columns]
+
     if enable_hp_search:
-        # thread_count=1 on the inner CatBoost to avoid nested parallelism;
-        # RandomizedSearchCV parallelises across param combinations instead.
-        # cat_features passed in constructor so RandomizedSearchCV's fit(X, y)
-        # calls receive it automatically without needing a custom fit wrapper.
-        _cat_indices = [X_fold_train.columns.get_loc(c) for c in _cat_feature_names
-                        if c in X_fold_train.columns]
-        _base_cat = _CatBoostCV(
+        # Manual randomized HP search — avoids RandomizedSearchCV entirely so
+        # sklearn's clone() is never called, bypassing CatBoost's internal param
+        # normalisation that breaks clone() for cat_features and class_weights.
+        _inner_cv  = StratifiedKFold(n_splits=N_CV_INNER, shuffle=True, random_state=42)
+        _rng       = np.random.RandomState(42)
+        _best_inner_score = -np.inf
+        fold_best_params  = {}
+
+        for _trial in range(N_ITER_SEARCH):
+            _trial_params = {k: _rng.choice(v) for k, v in param_dist.items()}
+
+            _trial_scores = []
+            for _itr_idx, _ival_idx in _inner_cv.split(X_fold_train, y_fold_train):
+                _Xi_tr = X_fold_train.iloc[_itr_idx]
+                _Xi_vl = X_fold_train.iloc[_ival_idx]
+                _yi_tr = y_fold_train.iloc[_itr_idx]
+                _yi_vl = y_fold_train.iloc[_ival_idx]
+
+                _inner_cat = [_Xi_tr.columns.get_loc(c) for c in _cat_feature_names
+                              if c in _Xi_tr.columns]
+
+                _m = CatBoostClassifier(
+                    **{k: int(v) if isinstance(v, np.integer) else v
+                       for k, v in _trial_params.items()},
+                    cat_features=_inner_cat,
+                    auto_class_weights='Balanced',
+                    thread_count=-1,
+                    random_seed=42,
+                    verbose=0,
+                )
+                _m.fit(_Xi_tr, _yi_tr)
+                _yi_pred = _m.predict(_Xi_vl)
+                _trial_scores.append(
+                    f1_score(_yi_vl, _yi_pred, average="macro", zero_division=0)
+                )
+
+            _mean = float(np.mean(_trial_scores))
+            if _mean > _best_inner_score:
+                _best_inner_score = _mean
+                fold_best_params  = {k: int(v) if isinstance(v, np.integer) else v
+                                     for k, v in _trial_params.items()}
+
+        # Refit best HP on the full outer fold training set
+        fold_model = CatBoostClassifier(
+            **fold_best_params,
             cat_features=_cat_indices,
             auto_class_weights='Balanced',
-            thread_count=1,
+            thread_count=-1,
             random_seed=42,
             verbose=0,
         )
-        _inner_cv = StratifiedKFold(n_splits=N_CV_INNER, shuffle=True, random_state=42)
-        _inner_search = RandomizedSearchCV(
-            _base_cat,
-            param_distributions=param_dist,
-            n_iter=N_ITER_SEARCH,
-            scoring=HP_SEARCH_METRIC,
-            cv=_inner_cv,
-            refit=True,
-            random_state=42,
-            n_jobs=-1,
-            error_score="raise",
-        )
-        _inner_search.fit(X_fold_train, y_fold_train)
-        fold_model       = _inner_search.best_estimator_
-        fold_best_params = _inner_search.best_params_
-        print(f"    HP best: {fold_best_params}  (inner CV {HP_SEARCH_METRIC}={_inner_search.best_score_:.4f})")
+        fold_model.fit(X_fold_train, y_fold_train)
+        print(f"    HP best: {fold_best_params}  (inner CV macro_f1={_best_inner_score:.4f})")
     else:
-        _cat_indices = [X_fold_train.columns.get_loc(c) for c in _cat_feature_names
-                        if c in X_fold_train.columns]
-        fold_model = _CatBoostCV(
+        fold_model = CatBoostClassifier(
             iterations=500,
             learning_rate=0.05,
             depth=6,
