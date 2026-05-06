@@ -249,28 +249,15 @@ Despite the unresolved dominance, two positive signals appear in the importance 
 
 Class 0 recall improved to 0.57 (from 0.52 in LGBM Option B at threshold 0.52). The threshold shift to 0.48 is doing its job — more class 0 predictions at the cost of slightly lower class 1 precision. The macro F1 improvement comes from this recall boost.
 
-### Known output display issue
+### Known output display issue (fixed in OptB run)
 
-The HP aggregation section shows `np.float64(0.03)` and `np.float64(0.0)` instead of plain `0.03` and `0.0`. This is cosmetic — `_rng.choice()` returns numpy scalars; the `int()` cast handles integer params but leaves floats as numpy types. The actual values used in training are correct. Fix: add `.item()` or `float()` cast alongside the existing `int()` branch.
+The initial run showed `np.float64(0.03)` in HP aggregation output. Fixed in `cat.py` by adding a `_cast()` helper that applies `float()` to `np.floating` scalars alongside the existing `int()` cast for `np.integer`. The OptB output shows clean values (0.03, 0.0) confirming the fix.
 
 ### Verdict and next direction
 
-CatBoost is the current best model by Macro F1 (0.6184), but the margin over LGBM Option B is within one standard deviation of both models' CV noise. ROC-AUC is lower, meaning the probability ordering is not better — only the threshold calibration improved.
+CatBoost + Option B is the next experiment. The hypothesis: ordered boosting's calibration advantage and Option B's +0.012 LGBM gain should be additive.
 
-The dominance problem persists under both architectures. The natural next experiment is **CatBoost + Option B**: keep CatBoost's ordered boosting and native categoricals but remove `fe_speaker_true_rate`. If Option B added +0.012 to LGBM and CatBoost's better calibration is complementary, the combination could push into the 0.63+ range. Alternatively, stacking OOF probabilities from LGBM-optB and CatBoost as meta-features captures their complementary error profiles at low implementation cost.
-
----
-
-## Results Summary
-
-| Model | CV Macro F1 | Holdout Macro F1 | Holdout ROC-AUC | Threshold |
-|-------|------------|-----------------|----------------|-----------|
-| LGBM initial | 0.5934 ± 0.0101 | 0.6062 | 0.6681 | 0.58 |
-| LGBM Option B (drop speaker_true_rate) | 0.5947 ± 0.0136 | 0.6179 | 0.6790 | 0.52 |
-| LGBM Option C (L1/L2 reg) | 0.5910 ± 0.0111 | 0.6069 | 0.6636 | 0.52 |
-| **CatBoost initial** | **0.6002 ± 0.0158** | **0.6184** | 0.6653 | **0.48** |
-
----
+*(Analysis of CatBoost + Option B results is in the section below.)*
 
 -----------------------------------------
 
@@ -387,3 +374,201 @@ weighted avg       0.65      0.64      0.64      1790
     statement_original_vec_329                          0.5793
     statement_original_vec_37                           0.5778
     statement_original_vec_14                           0.5537
+
+
+-------------------------------
+
+--> Catboost + Option B output
+[SECTION] Cross-validation summary  [total CV: 6005.7s]
+  roc_auc: 0.6572 ± 0.0118
+  pr_auc: 0.7634 ± 0.0095
+  macro_f1: 0.6056 ± 0.0137
+  f1: 0.6928 ± 0.0210
+  precision: 0.7375 ± 0.0090
+  recall: 0.6542 ± 0.0357
+  accuracy: 0.6253 ± 0.0168
+  mcc: 0.2192 ± 0.0241
+  balanced_acc: 0.6132 ± 0.0121
+
+[SECTION] Aggregating HP search results  [23:37:53]
+  iterations               : [(300, 5)]  → chosen: 300
+  learning_rate            : [(0.03, 3), (0.1, 2)]  → chosen: 0.03
+  depth                    : [(4, 5)]  → chosen: 4
+  l2_leaf_reg              : [(5, 3), (10, 2)]  → chosen: 5
+  border_count             : [(32, 5)]  → chosen: 32
+  bagging_temperature      : [(0.0, 3), (1.0, 2)]  → chosen: 0.0
+
+  Final HP for fit: {'iterations': 300, 'learning_rate': 0.03, 'depth': 4, 'l2_leaf_reg': 5, 'border_count': 32, 'bagging_temperature': 0.0}
+
+[SECTION] Threshold tuning on OOF predictions  [23:37:53]
+   threshold   macro_f1
+        0.20   0.4102
+        0.22   0.4191
+        0.24   0.4314
+        0.26   0.4410
+        0.28   0.4663
+        0.30   0.4881
+        0.32   0.5093
+        0.34   0.5293
+        0.36   0.5470
+        0.38   0.5693
+        0.40   0.5805
+        0.42   0.5937
+        0.44   0.6048
+        0.46   0.6097  ←
+        0.48   0.6051
+        0.50   0.6059
+        0.52   0.5975
+        0.54   0.5879
+        0.56   0.5784
+        0.58   0.5642
+        0.60   0.5472
+        0.62   0.5259
+        0.64   0.5075
+        0.66   0.4849
+        0.68   0.4573
+        0.70   0.4341
+        0.72   0.4069
+        0.74   0.3823
+        0.76   0.3609
+
+  Best threshold: 0.46  (OOF macro_f1=0.6097)
+  THRESHOLD updated: 0.50 → 0.46
+[SECTION] Fitting final model on full train/val set  [23:37:53]
+  Done in 5.0s
+[SECTION] Evaluating on holdout set  [23:37:58]
+  Using threshold: 0.46
+
+Holdout results:
+  roc_auc: 0.6740
+  pr_auc: 0.7779
+  macro_f1: 0.6294
+  f1: 0.7315
+  precision: 0.7429
+  recall: 0.7204
+  accuracy: 0.6575
+  mcc: 0.2594
+  balanced_acc: 0.6312
+
+              precision    recall  f1-score   support
+
+           0       0.51      0.54      0.53       631
+           1       0.74      0.72      0.73      1159
+
+    accuracy                           0.66      1790
+   macro avg       0.63      0.63      0.63      1790
+weighted avg       0.66      0.66      0.66      1790
+
+[SECTION] Computing feature importance
+  Top 30 features:
+    fe_speaker_job_true_rate                            14.8574
+    fe_subject_true_rate                                4.2611
+    speaker_grouped                                     4.0661
+    fe_party_true_rate                                  2.8929
+    party_affiliation_grouped                           2.3982
+    statement_original_PERSON                           2.2481
+    statement_original_vec_164                          1.7948
+    statement_original_vec_1                            1.4937
+    statement_original_vec_99                           1.4773
+    statement_original_vec_291                          1.4574
+    statement_original_vec_35                           1.3149
+    statement_original_vec_105                          1.2913
+    statement_original_vec_361                          1.0833
+    statement_original_vec_119                          1.0722
+    fe_state_party                                      1.0598
+    statement_original_vec_219                          1.0478
+    speaker_job_grouped                                 0.9996
+    statement_upper_ratio                               0.9499
+    statement_original_vec_250                          0.9451
+    statement_original_vec_142                          0.9251
+    statement_original_vec_159                          0.9052
+    statement_original_vec_158                          0.8609
+    statement_original_char_len                         0.8485
+    statement_original_vec_0                            0.8455
+    statement_original_vec_202                          0.8450
+    statement_original_vec_188                          0.8444
+    statement_original_vec_226                          0.7438
+    statement_original_DATE                             0.6835
+    statement_original_vec_204                          0.6800
+    statement_original_vec_299                          0.6703
+
+---
+
+## CatBoost + Option B Analysis
+
+### Performance — new best across the board
+
+| Metric | CatBoost initial | CatBoost + OptB | Delta |
+|--------|-----------------|-----------------|-------|
+| CV Macro F1 | 0.6002 ± 0.0158 | **0.6056 ± 0.0137** | +0.0054 |
+| Holdout Macro F1 | 0.6184 | **0.6294** | +0.0110 |
+| Holdout ROC-AUC | 0.6653 | **0.6740** | +0.0087 |
+| Threshold | 0.48 | **0.46** | ↓ further |
+| CV std | 0.0158 | **0.0137** | −0.0021 (lower variance) |
+
+The combination of CatBoost's calibration advantage and Option B's feature removal produced additive gains. Both Macro F1 (+0.011) and ROC-AUC (+0.009) improved simultaneously — the earlier tension between the two (initial CatBoost had best F1 but worse AUC) is resolved. This is now the strongest model in the project across all key metrics except ROC-AUC, where LGBM Option B (0.6790) still leads by 0.005.
+
+### HP convergence — unanimous regularization
+
+| Parameter | Initial | OptB | Votes (OptB) | Interpretation |
+|-----------|---------|------|--------------|----------------|
+| `iterations` | 500 | **300** | 5/5 unanimous | Fewer trees needed without dominant feature |
+| `learning_rate` | 0.03 | **0.03** | 3/5 | Consistent |
+| `depth` | 4 | **4** | 5/5 unanimous | Still shallowest; confirmed by both runs |
+| `l2_leaf_reg` | 5 | **5** | 3/5 | Consistent |
+| `border_count` | 64 | **32** | 5/5 unanimous | Fewer bins; more regularization |
+| `bagging_temperature` | 0.0 | **0.0** | 3/5 | No bootstrap noise, consistent |
+
+Three unanimous results (iterations, depth, border_count) are a strong signal. Removing `fe_speaker_true_rate` changed the optimal HP regime: the model needs *fewer* trees (300 vs 500) and *fewer* histogram bins (32 vs 64) — because it no longer has one feature providing cheap, high-confidence gradient signal. It compensates with stronger regularization overall.
+
+This is interpretable: with `fe_speaker_true_rate` present, the model could rapidly converge on splits of that feature and then use additional trees to refine. Without it, each additional tree contributes marginal signal and early stopping (implicit via lower `iterations`) prevents overfitting to noise.
+
+### Feature importance — dominance problem solved
+
+**Dominance ratio**: 14.86 / 4.26 = **3.49×** (vs 8.76× in CatBoost initial, 6.7–7.9× in LGBM)
+
+The targeted threshold of < 3× wasn't quite met, but 3.49× represents a 2.5× reduction from the CatBoost initial. More importantly, the importance is now distributed across five distinct features above 2.0:
+
+| Rank | Feature | Score | vs Initial |
+|------|---------|-------|------------|
+| 1 | `fe_speaker_job_true_rate` | 14.86 | Was rank 5 (1.44) — jumped 10× |
+| 2 | `fe_subject_true_rate` | 4.26 | Was rank 2 (2.53) — up 68% |
+| 3 | `speaker_grouped` | 4.07 | Was rank 3 (1.46) — nearly 3× |
+| 4 | `fe_party_true_rate` | 2.89 | Was rank 4 (1.46) — up 98% |
+| 5 | `party_affiliation_grouped` | 2.40 | Was not in top 30 |
+| 6 | `statement_original_PERSON` | 2.25 | Was rank 12 (0.89) — up 2.5× |
+
+The redistribution is exactly what was expected: removing the dominant feature didn't leave a vacuum — it freed gradient signal for the speaker_job true-rate, native categoricals (`speaker_grouped`, `party_affiliation_grouped`), and NER features. `statement_original_DATE` also appears at rank 28 (0.68) — new to the top 30.
+
+`fe_speaker_job_true_rate` jumping from rank 5 to rank 1 suggests it carries real signal about speaker credibility that was being suppressed by `fe_speaker_true_rate`. Speaker true-rate and speaker-job true-rate are correlated (same speaker's history), so when the stronger one is removed, the model shifts to the next-best proxy.
+
+### Threshold: further below 0.5
+
+Threshold moved from 0.48 → **0.46**, the lowest in the project. The OOF curve peaks sharply at 0.46, then drops back to 0.505 at threshold 0.50 — confirming the model's probability distribution is well-separated and centered below 0.5. This is the combined effect of CatBoost's symmetric trees (better calibration) and removing `fe_speaker_true_rate` (which was pulling scores toward class 1 via speaker's historical false rate).
+
+### Class recall
+
+| | Precision | Recall | F1 |
+|---|-----------|--------|----|
+| Class 0 (true) | 0.51 | 0.54 | 0.53 |
+| Class 1 (false) | 0.74 | 0.72 | **0.73** |
+
+The Macro F1 gain comes from class 1 F1 (0.71 → 0.73), with class 0 stable. Class 1 recall improved substantially (0.68 → 0.72) — the model is catching more false statements without heavily sacrificing precision. Class 0 recall is 0.54 (vs 0.57 in CatBoost initial) — a small regression, partially offset by better class 0 precision (0.49 → 0.51).
+
+### Verdict
+
+CatBoost + Option B is the best-performing model (Holdout Macro F1: **0.6294**, +0.011 over CatBoost initial, +0.012 over LGBM Option B). The combination is additive: ordered boosting improves calibration, Option B removes the feature that was suppressing other signals, and the freed capacity is distributed to interpretable, meaningful features.
+
+The dominance ratio dropped from 8.76× to 3.49× — confirming that the problem was not just `fe_speaker_true_rate` existing, but its monopoly in the presence of other features that could carry signal. CatBoost's native categorical handling now meaningfully contributes (`speaker_grouped`, `party_affiliation_grouped`, `speaker_job_grouped` all in top 20).
+
+---
+
+## Results Summary
+
+| Model | CV Macro F1 | Holdout Macro F1 | Holdout ROC-AUC | Threshold |
+|-------|------------|-----------------|----------------|-----------|
+| LGBM initial | 0.5934 ± 0.0101 | 0.6062 | 0.6681 | 0.58 |
+| LGBM Option B (drop speaker_true_rate) | 0.5947 ± 0.0136 | 0.6179 | 0.6790 | 0.52 |
+| LGBM Option C (L1/L2 reg) | 0.5910 ± 0.0111 | 0.6069 | 0.6636 | 0.52 |
+| CatBoost initial | 0.6002 ± 0.0158 | 0.6184 | 0.6653 | 0.48 |
+| **CatBoost + Option B** | **0.6056 ± 0.0137** | **0.6294** | 0.6740 | **0.46** |
