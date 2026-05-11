@@ -524,7 +524,7 @@ true_rate_fallback = 0.5
 BASE_LR_HP = dict(C=1.0, penalty="l2", max_iter=1000, solver="lbfgs",
                   class_weight=CLASS_WEIGHT_D, random_state=42)
 
-BASE_RFC_HP = dict(n_estimators=300, max_features=0.3, min_samples_leaf=2,
+BASE_RFC_HP = dict(n_estimators=500, max_features=0.3, min_samples_leaf=2,
                    class_weight=CLASS_WEIGHT_D, n_jobs=-1, random_state=42)
 
 BASE_LGBM_HP = dict(n_estimators=500, learning_rate=0.03, num_leaves=63,
@@ -538,7 +538,8 @@ BASE_CAT_HP = dict(iterations=300, learning_rate=0.03, depth=4, l2_leaf_reg=5,
 
 # Meta-learner: plain LR on 4 stacked OOF probas.
 # No class_weight — the base probas already encode the imbalance signal.
-META_LR_HP = dict(C=0.1, penalty="l2", max_iter=1000, solver="lbfgs", random_state=42)
+META_LR_HP = dict(C=0.1, penalty="l2", max_iter=1000, solver="lbfgs",
+                  class_weight={0: 1.42, 1: 0.77}, random_state=42)
 
 BASE_NAMES = ["lr", "rfc", "lgbm", "cat"]
 

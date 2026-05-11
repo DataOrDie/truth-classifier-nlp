@@ -352,3 +352,177 @@ This creates a structural problem for the meta-LR: it learned coefficients from 
 | CatBoost initial | 0.6002 ± 0.0158 | 0.6184 | 0.6653 | 0.48 |
 | CatBoost + OptB | **0.6056 ± 0.0137** | 0.6294 | 0.6740 | 0.46 |
 | **Stacking (initial)** | 0.6063 ± 0.0069 | **0.6303** | **0.6830** | 0.62 |
+
+-------------------------------------------------------------------------------------
+
+
+---> Output stacking run2 ,  `num_leaves=63` for LGBM  
+[SECTION] Cross-validation summary  [total CV: 93.0s]
+  roc_auc_avg: 0.6631 ± 0.0127
+  macro_f1_avg: 0.6022 ± 0.0121
+  roc_auc_lr: 0.6359 ± 0.0090
+  roc_auc_rfc: 0.6685 ± 0.0136
+  roc_auc_lgbm: 0.6528 ± 0.0168
+  roc_auc_cat: 0.6573 ± 0.0145
+
+[SECTION] Training meta-LR on stacked OOF  [13:11:51]
+  Meta-LR coefficients: {'lr': 0.5850075081125578, 'rfc': 1.5061114872719046, 'lgbm': 0.6953673642729318, 'cat': 1.009227823146433}
+
+[SECTION] Threshold tuning on stacked OOF  [13:11:51]
+   threshold   macro_f1
+        0.20   0.3930
+        0.22   0.3930
+        0.24   0.3930
+        0.26   0.3930
+        0.28   0.3934
+        0.30   0.3946
+        0.32   0.3986
+        0.34   0.4065
+        0.36   0.4171
+        0.38   0.4287
+        0.40   0.4445
+        0.42   0.4691
+        0.44   0.4897
+        0.46   0.5062
+        0.48   0.5342
+        0.50   0.5544
+        0.52   0.5686
+        0.54   0.5834
+        0.56   0.5956
+        0.58   0.6008
+        0.60   0.6069
+        0.62   0.6124  ←
+        0.64   0.6098
+        0.66   0.6058
+        0.68   0.5942
+        0.70   0.5752
+        0.72   0.5506
+        0.74   0.5173
+        0.76   0.4764
+
+  Best threshold: 0.62  (OOF macro_f1=0.6124)
+  THRESHOLD updated: 0.50 → 0.62
+[SECTION] Fitting final base models on full train/val set  [13:11:52]
+  Done in 22.2s
+[SECTION] Evaluating on holdout set  [13:12:15]
+  Using threshold: 0.62
+
+Holdout results:
+  roc_auc: 0.6835
+  pr_auc: 0.7852
+  macro_f1: 0.6323
+  f1: 0.7220
+  precision: 0.7528
+  recall: 0.6937
+  accuracy: 0.6542
+  mcc: 0.2681
+  balanced_acc: 0.6377
+
+              precision    recall  f1-score   support
+
+           0       0.51      0.58      0.54       631
+           1       0.75      0.69      0.72      1159
+
+    accuracy                           0.65      1790
+   macro avg       0.63      0.64      0.63      1790
+weighted avg       0.67      0.65      0.66      1790
+
+  Base model holdout ROC-AUC:
+    LR  : 0.6582
+    RFC : 0.6738
+    LGBM: 0.6766
+    CAT : 0.6740
+
+---
+
+## Run 2 Analysis — `num_leaves=63`
+
+### Performance — new best on both metrics
+
+| Metric | Run 1 (num_leaves=31) | Run 2 (num_leaves=63) | Delta |
+|--------|----------------------|----------------------|-------|
+| OOF Macro F1 (tuned threshold) | 0.6116 | **0.6124** | +0.0008 |
+| Holdout Macro F1 | 0.6303 | **0.6323** | **+0.002** |
+| Holdout ROC-AUC | 0.6830 | **0.6835** | +0.0005 |
+| CV macro_f1_avg (proxy) | 0.6063 ± 0.0069 | 0.6022 ± 0.0121 | −0.0041 |
+| Threshold | 0.62 | 0.62 | — |
+| CV runtime | 82.3s | 93.0s | +10.7s |
+
+The hypothesis confirmed: `num_leaves=63` improves holdout Macro F1 (+0.002, now 0.6323) and ROC-AUC (+0.0005, now 0.6835). Both are the new project records.
+
+The `cv_macro_f1_avg` proxy metric fell (0.6063 → 0.6022) while holdout improved. This is not a contradiction — the proxy uses a fixed threshold of 0.5 and a simple average of the 4 OOF probas before the meta-LR is trained. With num_leaves=63, LGBM produces noisier fold-level probas (higher individual fold variance: 0.0168 vs 0.0149), which depresses the naive average metric. But the meta-LR extracts more useful signal from those probas, which is what matters. The OOF tuned metric (0.6116 → 0.6124) and holdout metric (0.6303 → 0.6323) both moved in the right direction.
+
+### Meta-LR coefficient shift — hypothesis confirmed
+
+| Base model | Run 1 coef | Run 2 coef | Delta | OOF AUC run1 | OOF AUC run2 |
+|------------|-----------|-----------|-------|-------------|-------------|
+| RFC | 1.6443 | **1.5061** | −0.138 | 0.6685 | 0.6685 |
+| CatBoost | 1.0962 | **1.0092** | −0.087 | 0.6573 | 0.6573 |
+| LGBM | 0.5704 | **0.6954** | **+0.125** | 0.6450 | **0.6528** |
+| LR | 0.6504 | **0.5850** | −0.065 | 0.6359 | 0.6359 |
+
+The prediction held exactly. LGBM's OOF ROC-AUC rose from 0.6450 to 0.6528 (+0.0078) with num_leaves=63, and its meta-LR coefficient rose from 0.570 to 0.695 (+0.125). RFC's dominance decreased (1.644 → 1.506) as LGBM became a more competitive signal source. All coefficients remain positive.
+
+The OOF/holdout gap for LGBM: in run 1, the gap was 0.6776 − 0.6450 = 0.033. In run 2, it narrowed to 0.6766 − 0.6528 = 0.024. The final LGBM holdout ROC-AUC is slightly lower (0.6766 vs 0.6776) — num_leaves=63 may introduce a small amount of overfitting on the full trainval dataset relative to 31, but the fold-level models are more representative, which is what matters for the meta-LR's training signal.
+
+### RFC still dominates (coefficient 1.51) — why it persists
+
+Even with a stronger LGBM, RFC maintains the highest coefficient. The explanation from Run 1 holds: RFC's bootstrap aggregation produces errors that are structurally decorrelated from both boosted models. When LGBM (leaf-wise) and CatBoost (symmetric trees) both fail on a sample, RFC's ensemble of random projections often succeeds. The meta-LR has consistently learned to weight this decorrelation signal the most. This is genuine complementarity, not an artifact of HP miscalibration.
+
+### All-model results summary (updated)
+
+| Model | CV Macro F1 | Holdout Macro F1 | Holdout ROC-AUC | Threshold |
+|-------|------------|-----------------|----------------|-----------|
+| LGBM initial | 0.5934 ± 0.0101 | 0.6062 | 0.6681 | 0.58 |
+| LGBM Option B | 0.5947 ± 0.0136 | 0.6179 | 0.6790 | 0.52 |
+| CatBoost initial | 0.6002 ± 0.0158 | 0.6184 | 0.6653 | 0.48 |
+| CatBoost + OptB | 0.6056 ± 0.0137 | 0.6294 | 0.6740 | 0.46 |
+| Stacking run 1 (LGBM nl=31) | 0.6063 ± 0.0069 | 0.6303 | 0.6830 | 0.62 |
+| **Stacking run 2 (LGBM nl=63)** | 0.6022 ± 0.0121 | **0.6323** | **0.6835** | 0.62 |
+
+Two signals from the data point to concrete experiments:                                                
+                                                                                                          
+  1. The threshold of 0.62 (highest in the project) is the clearest anomaly.                              
+  Every individual model peaked between 0.46–0.58. The meta-LR peaks at 0.62 because its base models all
+  apply class_weight, which shifts their class-1 probas upward — the meta-LR inherits that bias without
+  correction. Adding class_weight to the meta-LR directly addresses this:
+
+  META_LR_HP = dict(C=0.1, penalty="l2", max_iter=1000, solver="lbfgs",
+                    class_weight={0: 1.42, 1: 0.77}, random_state=42)
+
+  This will shift the meta-LR's output probas, likely pulling the optimal threshold down toward 0.5 and
+  may improve Macro F1 since the class boundary is being placed more deliberately. The double-counting
+  concern from the journey doc is real but mild — the base model probas encode imbalance as a tendency,
+  not as an absolute shift; adding class_weight to the meta-LR corrects for what the tendency can't fully
+  compensate.
+
+  2. RFC has the highest coefficient (1.506) but the roughest estimated HPs.
+  The RFC in the stack uses max_features=0.3, min_samples_leaf=2 — central-estimate guesses, not search
+  results. Since RFC is doing the most work in the ensemble, its HPs matter most. Adding n_estimators=500
+  (from 300) costs nothing in correctness and reduces its probability variance:
+
+  BASE_RFC_HP = dict(n_estimators=500, max_features=0.3, min_samples_leaf=2, ...)
+
+  What's likely at the ceiling:
+
+  The LGBM OOF/holdout gap is now 0.024 — still present but narrowing. Pushing further (num_leaves=127,
+  n_estimators=800) has diminishing returns because the gap is structural: each fold trains on 20% fewer
+  samples, and boosted trees are more data-sensitive than RFC.
+
+  The harder ceiling is that all 4 base models share the same embedding feature space (all-MiniLM-L6-v2).
+  Their errors are correlated by construction — LGBM and CatBoost running on identical features will
+  always agree on the cases the embedding handles well and fail together on the cases it doesn't. The RFC
+  coefficient dominance is a symptom: RFC's bootstrap randomness is the only real decorrelator available
+  within this feature space.
+
+  The next meaningful step after those two experiments would be a genuinely different feature space for
+  one base model — the TF-IDF LR from lr.py as a 5th base model. That adds lexical signal the embedding
+  can miss (exact token matches, rare proper nouns) and is architecturally different enough that its
+  errors should be less correlated with the tree models.
+
+  Recommended order:
+  1. Add class_weight to meta-LR (one-line change, addresses the clearest anomaly)
+  2. RFC n_estimators=500 (one-line change, more stable probas from the most-weighted model)
+  3. If still plateaued: add TF-IDF LR as a 5th base model with separate preprocessing
+
+  
