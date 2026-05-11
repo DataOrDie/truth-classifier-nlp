@@ -525,4 +525,130 @@ Two signals from the data point to concrete experiments:
   2. RFC n_estimators=500 (one-line change, more stable probas from the most-weighted model)
   3. If still plateaued: add TF-IDF LR as a 5th base model with separate preprocessing
 
-  
+  ---------------------------------------------
+
+  --> Stacking Output [ class_weight to meta-LR , n_estimators=500]
+[SECTION] Cross-validation summary  [total CV: 125.1s]
+  roc_auc_avg: 0.6628 ± 0.0125
+  macro_f1_avg: 0.6030 ± 0.0104
+  roc_auc_lr: 0.6359 ± 0.0090
+  roc_auc_rfc: 0.6679 ± 0.0117
+  roc_auc_lgbm: 0.6528 ± 0.0168
+  roc_auc_cat: 0.6573 ± 0.0145
+
+[SECTION] Training meta-LR on stacked OOF  [13:36:08]
+  Meta-LR coefficients: {'lr': 0.5912175419978312, 'rfc': 1.5506700558191027, 'lgbm': 0.6877924710810327, 'cat': 1.0394245897944507}
+
+[SECTION] Threshold tuning on stacked OOF  [13:36:08]
+   threshold   macro_f1
+        0.20   0.3978
+        0.22   0.4081
+        0.24   0.4236
+        0.26   0.4403
+        0.28   0.4687
+        0.30   0.4934
+        0.32   0.5150
+        0.34   0.5412
+        0.36   0.5607
+        0.38   0.5751
+        0.40   0.5904
+        0.42   0.5974
+        0.44   0.6065
+        0.46   0.6093
+        0.48   0.6094  ←
+        0.50   0.6069
+        0.52   0.6024
+        0.54   0.5910
+        0.56   0.5741
+        0.58   0.5575
+        0.60   0.5326
+        0.62   0.5006
+        0.64   0.4640
+        0.66   0.4270
+        0.68   0.3854
+        0.70   0.3428
+        0.72   0.3062
+        0.74   0.2764
+        0.76   0.2649
+
+  Best threshold: 0.48  (OOF macro_f1=0.6094)
+  THRESHOLD updated: 0.50 → 0.48
+[SECTION] Fitting final base models on full train/val set  [13:36:09]
+  Done in 30.6s
+[SECTION] Evaluating on holdout set  [13:36:40]
+  Using threshold: 0.48
+
+Holdout results:
+  roc_auc: 0.6835
+  pr_auc: 0.7851
+  macro_f1: 0.6292
+  f1: 0.7129
+  precision: 0.7556
+  recall: 0.6747
+  accuracy: 0.6480
+  mcc: 0.2648
+  balanced_acc: 0.6369
+
+              precision    recall  f1-score   support
+
+           0       0.50      0.60      0.55       631
+           1       0.76      0.67      0.71      1159
+
+    accuracy                           0.65      1790
+   macro avg       0.63      0.64      0.63      1790
+weighted avg       0.67      0.65      0.65      1790
+
+  Base model holdout ROC-AUC:
+    LR  : 0.6582
+    RFC : 0.6751
+    LGBM: 0.6766
+    CAT : 0.6740
+
+---
+
+## Run 3 Analysis — meta-LR `class_weight` + RFC `n_estimators=500`
+
+### Performance — threshold corrected, Macro F1 regressed
+
+| Metric | Run 2 (baseline) | Run 3 | Delta |
+|--------|-----------------|-------|-------|
+| OOF Macro F1 (tuned threshold) | 0.6124 | 0.6094 | −0.003 |
+| Holdout Macro F1 | **0.6323** | 0.6292 | **−0.003** |
+| Holdout ROC-AUC | 0.6835 | 0.6835 | 0 |
+| Threshold | 0.62 | **0.48** | ↓ as predicted |
+| RFC holdout AUC | 0.6738 | **0.6751** | +0.0013 |
+| RFC OOF AUC variance | ±0.0136 | **±0.0117** | −0.0019 |
+
+The threshold prediction was exactly right — `class_weight` on the meta-LR moved the optimal cutoff from 0.62 to 0.48, right in line with the individual model range. The mechanism is confirmed: the base model class weighting was causing a probability bias that the high threshold was compensating for, and adding class_weight to the meta-LR corrected the bias directly.
+
+However, Macro F1 regressed by −0.003. The threshold moved in the right direction but the underlying OOF peak score fell (0.6124 → 0.6094). The initial "Why no class_weight?" reasoning in the Architecture Decisions section was correct: **double-counting the imbalance correction is net negative**.
+
+### Why class_weight on the meta-LR hurt
+
+The base model probas are already biased upward for class-1 samples because all four base models apply `class_weight={0:1.42, 1:0.77}` during training. The meta-LR receives inputs that already carry this signal. Adding `class_weight` to the meta-LR creates a second layer of class-1 preference on top of probas that already encode it.
+
+The class report shows the effect clearly:
+
+| | Run 2 precision | Run 2 recall | Run 2 F1 | Run 3 precision | Run 3 recall | Run 3 F1 |
+|--|--|--|--|--|--|--|
+| Class 0 (true) | 0.51 | 0.58 | 0.54 | 0.50 | **0.60** | 0.55 |
+| Class 1 (false) | 0.75 | **0.69** | **0.72** | 0.76 | 0.67 | 0.71 |
+
+Class-0 recall improved (0.58 → 0.60) as the meta-LR became more cautious about predicting class 1. But class-1 recall fell (0.69 → 0.67) and class-1 F1 dropped (0.72 → 0.71). Since class 1 has nearly twice the samples (1,159 vs 631), any drop in its F1 pulls the macro average down more than a matching gain in class-0 F1 can pull it up. The net: macro F1 fell from 0.6323 to 0.6292.
+
+**Conclusion: `class_weight` must be removed from the meta-LR.** The "correct" threshold (0.48 vs 0.62) is aesthetically appealing but doesn't translate to better predictions. The high threshold in runs 1–2 was the right compensating mechanism.
+
+### RFC n_estimators=500 — genuine improvement, keep it
+
+Isolated from the class_weight regression, the RFC change is cleanly positive:
+- OOF AUC variance dropped: ±0.0136 → ±0.0117 (more stable fold estimates)
+- Holdout AUC improved: 0.6738 → 0.6751 (+0.0013)
+- Coefficient held steady: 1.5061 → 1.5507 (slight rise, consistent with more stable probas)
+
+500 trees produce better-calibrated probabilities than 300 through the law of large numbers: each additional tree reduces the aggregation variance. With RFC carrying the highest meta-LR coefficient across all runs, reducing its probability variance directly reduces the meta-LR's fitting noise.
+
+### Next step: run 4
+
+Revert `class_weight` from the meta-LR, keep RFC at 500 trees. This isolates the RFC improvement and should recover the run 2 Macro F1 (0.6323) with slightly better RFC signal (0.6751 vs 0.6738 AUC).
+
+Expected result: Macro F1 ≈ 0.632–0.634.
