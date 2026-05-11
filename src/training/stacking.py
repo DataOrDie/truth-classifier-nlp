@@ -527,7 +527,7 @@ BASE_LR_HP = dict(C=1.0, penalty="l2", max_iter=1000, solver="lbfgs",
 BASE_RFC_HP = dict(n_estimators=300, max_features=0.3, min_samples_leaf=2,
                    class_weight=CLASS_WEIGHT_D, n_jobs=-1, random_state=42)
 
-BASE_LGBM_HP = dict(n_estimators=500, learning_rate=0.03, num_leaves=31,
+BASE_LGBM_HP = dict(n_estimators=500, learning_rate=0.03, num_leaves=63,
                     min_child_samples=20, subsample=0.8, colsample_bytree=0.8,
                     reg_alpha=0.0, reg_lambda=0.0,
                     class_weight=CLASS_WEIGHT_D, n_jobs=-1, random_state=42, verbose=-1)

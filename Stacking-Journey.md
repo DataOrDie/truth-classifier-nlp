@@ -204,3 +204,151 @@ Plus final refit on full trainval (~10 min for all 4 models). Expect **2.5–3 h
 3. **If stacking < 0.6294**: meta-LR is fitting noise. Try replacing the meta-LR with a simple average (equal-weight ensemble) — if the average beats the meta-LR, the meta-LR is overfitting despite C=0.1. Also check whether any base model's coefficient is strongly negative.
 
 4. **Submission**: if stacking beats CatBoost-OptB on holdout, submit it. The Kaggle submission CSV is generated inline at the end of the script.
+
+
+
+--------------------------------
+
+--> Initial run Output
+[SECTION] Cross-validation summary  [total CV: 82.3s]
+  roc_auc_avg: 0.6609 ± 0.0120
+  macro_f1_avg: 0.6063 ± 0.0069
+  roc_auc_lr: 0.6359 ± 0.0090
+  roc_auc_rfc: 0.6685 ± 0.0136
+  roc_auc_lgbm: 0.6450 ± 0.0149
+  roc_auc_cat: 0.6573 ± 0.0145
+
+[SECTION] Training meta-LR on stacked OOF  [11:02:29]
+  Meta-LR coefficients: {'lr': 0.6504079300488584, 'rfc': 1.6443321071484418, 'lgbm': 0.5704459003500517, 'cat': 1.0962264338089995}
+
+[SECTION] Threshold tuning on stacked OOF  [11:02:29]
+   threshold   macro_f1
+        0.20   0.3930
+        0.22   0.3930
+        0.24   0.3930
+        0.26   0.3930
+        0.28   0.3930
+        0.30   0.3942
+        0.32   0.3954
+        0.34   0.4016
+        0.36   0.4092
+        0.38   0.4191
+        0.40   0.4338
+        0.42   0.4562
+        0.44   0.4815
+        0.46   0.5043
+        0.48   0.5247
+        0.50   0.5449
+        0.52   0.5650
+        0.54   0.5793
+        0.56   0.5897
+        0.58   0.6011
+        0.60   0.6104
+        0.62   0.6116  ←
+        0.64   0.6098
+        0.66   0.5980
+        0.68   0.5897
+        0.70   0.5725
+        0.72   0.5458
+        0.74   0.5140
+        0.76   0.4717
+
+  Best threshold: 0.62  (OOF macro_f1=0.6116)
+  THRESHOLD updated: 0.50 → 0.62
+[SECTION] Fitting final base models on full train/val set  [11:02:30]
+  Done in 20.0s
+[SECTION] Evaluating on holdout set  [11:02:50]
+  Using threshold: 0.62
+
+Holdout results:
+  roc_auc: 0.6830
+  pr_auc: 0.7855
+  macro_f1: 0.6303
+  f1: 0.7197
+  precision: 0.7519
+  recall: 0.6903
+  accuracy: 0.6520
+  mcc: 0.2645
+  balanced_acc: 0.6359
+
+              precision    recall  f1-score   support
+
+           0       0.51      0.58      0.54       631
+           1       0.75      0.69      0.72      1159
+
+    accuracy                           0.65      1790
+   macro avg       0.63      0.64      0.63      1790
+weighted avg       0.67      0.65      0.66      1790
+
+  Base model holdout ROC-AUC:
+    LR  : 0.6582
+    RFC : 0.6738
+    LGBM: 0.6776
+    CAT : 0.6740
+
+---
+
+## Initial Run Analysis
+
+### Performance — new ROC-AUC best, marginal Macro F1 gain
+
+| Metric | CatBoost+OptB (best prior) | Stacking | Delta |
+|--------|---------------------------|----------|-------|
+| CV Macro F1 | 0.6056 ± 0.0137 | **0.6063 ± 0.0069** | +0.0007 |
+| Holdout Macro F1 | 0.6294 | **0.6303** | +0.0009 |
+| Holdout ROC-AUC | 0.6740 | **0.6830** | **+0.009** ← new best |
+| Threshold | 0.46 | 0.62 | ↑ significantly |
+| CV runtime | ~6,006s | **82.3s** | 73× faster |
+
+The stacking run beat every prior model on ROC-AUC (0.6830 vs. LGBM-OptB's previous record of 0.6790, +0.004). Macro F1 improved only marginally (+0.0009 over CatBoost-OptB). The hypothesis of "+1–2 F1 points" did not materialise. The ensemble is combining the models' probability rankings better (ROC-AUC) than their threshold-specific decisions (Macro F1) — consistent with what the pre-run analysis predicted: the two best individual models already had opposite strengths on those two metrics.
+
+The CV variance on Macro F1 dropped to 0.0069 from CatBoost-OptB's 0.0137 — stacking makes the ensemble more stable fold-to-fold, which is a positive sign independent of the point estimate.
+
+The 82.3s CV time is 73× faster than cat.py's ~6,000s. The entire speedup comes from removing inner HP search: cat.py ran 5 outer × 3 inner × 20 iterations = 300 CatBoost fits; stacking runs 5 × 1 = 5.
+
+### Threshold: 0.62 — highest in the project, and why
+
+Every prior model's optimal threshold was below 0.5 (CatBoost-OptB: 0.46) or modestly above (LGBM-OptB: 0.52). Stacking peaked at **0.62**, the highest recorded. The OOF curve rises monotonically from 0.20 all the way to 0.62 before falling — there is no shoulder or plateau, just a clean single peak.
+
+The mechanism: all 4 base models apply `class_weight={0:1.42, 1:0.77}`, which upweights minority-class errors during training. This systematically pushes their class-1 (false statement) predicted probabilities higher. The meta-LR receives four input columns that are all biased upward for true class-1 samples. Without its own class_weight, the meta-LR learns a linear combination of these biased probas — the resulting output probas are calibrated relative to the biased inputs, not relative to the true class frequency. The threshold tuning corrects for this, landing at 0.62.
+
+This is not a bug: threshold tuning is the right correction mechanism. But it signals that the meta-LR's probability outputs are poorly calibrated in an absolute sense. The OOF peak score of 0.6116 (Macro F1) holds up to 0.6303 on holdout, which means the correction transfers — the calibration gap is consistent across the train/holdout split.
+
+**Implication for next experiments**: adding `class_weight={0:1.42, 1:0.77}` to the meta-LR would shift its probability outputs, likely pulling the optimal threshold closer to 0.5. Whether this improves Macro F1 is an open question — the threshold tuning already finds the optimum.
+
+### Meta-LR coefficients — RFC dominates
+
+| Base model | Coefficient | OOF ROC-AUC | Holdout ROC-AUC |
+|------------|-------------|-------------|----------------|
+| RFC | **1.644** | **0.6685** | 0.6738 |
+| CatBoost | 1.096 | 0.6573 | 0.6740 |
+| LR | 0.650 | 0.6359 | 0.6582 |
+| LGBM | 0.570 | 0.6450 | 0.6776 |
+
+RFC has the highest coefficient (1.644) despite ranking third on holdout ROC-AUC (0.6738). LGBM has the lowest coefficient (0.570) despite ranking first on holdout ROC-AUC (0.6776). No coefficient is negative — all four base models contribute positively.
+
+The RFC dominance is the most informative result. The meta-LR learned from OOF patterns, not holdout rankings. Two explanations:
+
+1. **RFC's errors are the most complementary.** RFC uses bootstrap sampling and random feature subsets, which creates a different error structure than both boosted models. When LGBM and CatBoost both mispredict a sample, RFC often gets it right — and the meta-LR learned to weight this correction signal heavily.
+
+2. **RFC's OOF probabilities are better calibrated than its individual ranking suggests.** Random forests produce well-calibrated probabilities in moderate-dimensional spaces because averaging over 300 trees smooths out individual tree overconfidence. LGBM's OOF probas at num_leaves=31 may be less calibrated, making them less useful to the meta-LR per unit of coefficient.
+
+The LGBM underperformance in OOF (0.6450) vs. holdout (0.6776) is a large discrepancy — 0.033 gap. CatBoost shows a smaller gap (0.6573 → 0.6740, 0.017). This suggests LGBM's OOF probas from the conservative HP (num_leaves=31) are systematically weaker than what the final-refitted LGBM produces on holdout — the full-trainval model benefits from more data in a way the fold models don't. This is the main reason the meta-LR underweights LGBM.
+
+### OOF vs. holdout discrepancy in base models
+
+The LGBM OOF/holdout gap (+0.033 ROC-AUC) is a known property of gradient boosting with conservative HPs on small datasets: each fold's training set is 20% smaller than the full trainval, and LGBM at num_leaves=31 underfits more with less data. The final model (trained on 100% of trainval) is noticeably stronger.
+
+This creates a structural problem for the meta-LR: it learned coefficients from OOF patterns where LGBM was weaker than it actually is. If LGBM's OOF probas had been generated by a better-tuned model (num_leaves=63), the meta-LR might have assigned it a higher coefficient, and the stacking Macro F1 might have improved more.
+
+**Actionable**: re-run stacking with `num_leaves=63` for the LGBM base model and compare coefficients. If LGBM's coefficient rises and Macro F1 improves, the conservative HP was the bottleneck.
+
+### Results summary (all models)
+
+| Model | CV Macro F1 | Holdout Macro F1 | Holdout ROC-AUC | Threshold |
+|-------|------------|-----------------|----------------|-----------|
+| LGBM initial | 0.5934 ± 0.0101 | 0.6062 | 0.6681 | 0.58 |
+| LGBM Option B | 0.5947 ± 0.0136 | 0.6179 | **0.6790** | 0.52 |
+| CatBoost initial | 0.6002 ± 0.0158 | 0.6184 | 0.6653 | 0.48 |
+| CatBoost + OptB | **0.6056 ± 0.0137** | 0.6294 | 0.6740 | 0.46 |
+| **Stacking (initial)** | 0.6063 ± 0.0069 | **0.6303** | **0.6830** | 0.62 |
