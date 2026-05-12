@@ -103,7 +103,7 @@ torch.manual_seed(SEED)
 np.random.seed(SEED)
 
 device  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-USE_AMP = device.type == "cuda"
+USE_AMP = False  # DeBERTa-v3 is unstable in BF16; FP32 fits in 12 GB at batch_size=16
 
 print(f"Device : {device}")
 if device.type == "cuda":
