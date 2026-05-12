@@ -544,50 +544,41 @@ Holdout results:
 weighted avg       0.65      0.62      0.63      1790
 
 
-Here's the diagnosis:
+**Script config at time of Run 2**
 
-  ┌─────────────────────────┬──────────────────────┬──────────────────────┐
-  │         Metric          │ Run 1 (2e-5, wu=0.1) │ Run 2 (1e-5, wu=0.2) │
-  ├─────────────────────────┼──────────────────────┼──────────────────────┤
-  │ Best checkpoint epoch   │ 1                    │ 1                    │
-  ├─────────────────────────┼──────────────────────┼──────────────────────┤
-  │ Best val macro_f1 (ep1) │ 0.6122               │ 0.5993               │
-  ├─────────────────────────┼──────────────────────┼──────────────────────┤
-  │ Tuned val macro_f1      │ 0.6227 (thr=0.48)    │ 0.6193 (thr=0.56)    │
-  ├─────────────────────────┼──────────────────────┼──────────────────────┤
-  │ Holdout macro_f1        │ 0.6127               │ 0.6039               │
-  ├─────────────────────────┼──────────────────────┼──────────────────────┤
-  │ Holdout ROC-AUC         │ 0.6552               │ 0.6508               │
-  └─────────────────────────┴──────────────────────┴──────────────────────┘
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Model | `microsoft/deberta-v3-small` | 86M params, FP32 |
+| EPOCHS | 3 | Best checkpoint saved by val macro_f1 |
+| LR | 1e-5 | Half of Run 1 |
+| WARMUP_RATIO | 0.2 | 20% of total steps |
+| WEIGHT_DECAY | 0.01 | — |
+| LABEL_SMOOTHING | none | — |
+| Scheduler | Linear warmup + decay | — |
+| Threshold tuning | On val set | Best threshold: 0.56 |
 
-  What happened: Lowering LR to 1e-5 extracted less signal in epoch 1 (val F1 dropped from 0.6122 →
-  0.5993), and the model still overfits from epoch 2 regardless. The val_loss spike at epoch 3 (0.6580
-   → 0.7011) is even more severe than Run 1. The proba range blowing out to [0.12, 0.96] by epoch 3
-  confirms overconfident collapse.
+**Key observations — Run 2 was a regression**
 
-  Root cause: ~6,400 training samples is genuinely small for 86M params. The model saturates useful
-  learning in one epoch — LR tuning doesn't fix that, regularization does.
+| Metric | Run 1 (2e-5, wu=0.1) | Run 2 (1e-5, wu=0.2) |
+|--------|----------------------|----------------------|
+| Best checkpoint epoch | 1 | 1 |
+| Best val macro_f1 (ep1) | 0.6122 | 0.5993 |
+| Tuned val macro_f1 | 0.6227 (thr=0.48) | 0.6193 (thr=0.56) |
+| Holdout macro_f1 | 0.6127 | 0.6039 |
+| Holdout ROC-AUC | 0.6552 | 0.6508 |
+
+- Epoch 1 still the best checkpoint in Run 2, but with even less signal than Run 1
+- Lower LR extracted *less* signal in epoch 1 (val F1: 0.6122 → 0.5993)
+- Val_loss at epoch 3 jumped to 0.7011 — more severe collapse than Run 1
+- Proba range blew out to [0.12, 0.96] by epoch 3 — overconfident collapse
+- Threshold shifted to 0.56 vs 0.48 — model skewed harder toward predicting false
+- Root cause: ~6,400 training samples is too small for 86M params; the model saturates useful learning in one pass — LR tuning alone does not fix this
+
+**Next: Run 3** — one-epoch approach: `EPOCHS=1`, `LR=3e-5`, cosine schedule, `label_smoothing=0.1`. Extract max signal from one clean pass; skip overfitting entirely.
+
+-------------------------------
 
 
-
-  Option B — Layer-wise LR decay (LLRD) (principled): Apply 0.9× LR decay per DeBERTa layer so
-──────────────────────────────────────────────────────────────────────────────────────────────────────
-Which direction for Run 3?
-     Simplest: extract max signal in one clean pass, avoid overfitting entirely. Easy to implement,
-     fast run.
-  0.5993), and the model still overfits from epoch 2 regardless. The val_loss spike at epoch 3 (0.6580
-   → 0.7011) is even more severe than Run 1. The proba range blowing out to [0.12, 0.96] by epoch 3
-  confirms overconfident collapse.
-
-  Root cause: ~6,400 training samples is genuinely small for 86M params. The model saturates useful
-  learning in one epoch — LR tuning doesn't fix that, regularization does.
-
-  Run 3 proposal — one of two directions:
-
-  Option A — "One-epoch wonder" (simplest, lowest risk): Set EPOCHS=1, LR=3e-5, cosine schedule, add
-  label_smoothing=0.1. Take full advantage of the clean first pass, skip overfitting entirely.
-
-  Option B — Layer-wise LR decay (LLRD) (principled): Apply 0.9× LR decay per DeBERTa layer so
-  backbone gets ~3e-6 while the classifier head gets full 1e-5. Standard trick for preventing backbone
+  
 
   

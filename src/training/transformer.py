@@ -5,11 +5,11 @@ Architecture
 ------------
 [statement tokens] → DeBERTa-v3-small encoder → [CLS] → dropout → Linear(768 → 2)
 
-Loss       : CrossEntropyLoss with class weights {0: 1.42, 1: 0.77}
-Optimizer  : AdamW lr=2e-5, linear warmup 10% of steps, linear decay
-Epochs     : 3  (best checkpoint saved by val macro_f1)
+Loss       : CrossEntropyLoss with class weights {0: 1.42, 1: 0.77} + label_smoothing=0.1
+Optimizer  : AdamW lr=3e-5, cosine warmup 10% of steps
+Epochs     : 1  (one-epoch approach: avoids overfitting on small dataset)
 Max tokens : 128  (covers 99%+ of statements; halves VRAM vs. 512)
-Precision  : FP16 mixed (AMP) when CUDA is available
+Precision  : FP32  (DeBERTa-v3 unstable in BF16)
 
 Split
 -----
@@ -51,7 +51,7 @@ from torch.utils.data import DataLoader, Dataset
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
-    get_linear_schedule_with_warmup,
+    get_cosine_schedule_with_warmup,
 )
 
 
@@ -80,13 +80,14 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # ============================================================
 # Config
 # ============================================================
-MODEL_NAME   = "microsoft/deberta-v3-small"
-MAX_LENGTH   = 128
-BATCH_SIZE   = 16       # safe for 12 GB VRAM; bump to 32 on Kaggle T4 (16 GB)
-EPOCHS       = 3
-LR           = 1e-5
-WARMUP_RATIO = 0.2
-WEIGHT_DECAY = 0.01
+MODEL_NAME      = "microsoft/deberta-v3-small"
+MAX_LENGTH      = 128
+BATCH_SIZE      = 16       # safe for 12 GB VRAM; bump to 32 on Kaggle T4 (16 GB)
+EPOCHS          = 1
+LR              = 3e-5
+WARMUP_RATIO    = 0.1
+WEIGHT_DECAY    = 0.01
+LABEL_SMOOTHING = 0.1
 
 CLASS_WEIGHTS = [1.42, 0.77]   # {0: true, 1: false} — same as all other scripts
 THRESHOLD     = 0.5
@@ -186,12 +187,12 @@ n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"  Parameters: {n_params:,}")
 
 loss_weights = torch.tensor(CLASS_WEIGHTS, dtype=torch.float32).to(device)
-criterion    = nn.CrossEntropyLoss(weight=loss_weights)
+criterion    = nn.CrossEntropyLoss(weight=loss_weights, label_smoothing=LABEL_SMOOTHING)
 
 optimizer    = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
 total_steps  = len(train_loader) * EPOCHS
 warmup_steps = int(total_steps * WARMUP_RATIO)
-scheduler    = get_linear_schedule_with_warmup(optimizer, warmup_steps, total_steps)
+scheduler    = get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_steps)
 # BF16 doesn't need a GradScaler (wider dynamic range than FP16)
 
 
@@ -208,9 +209,11 @@ run = wandb.init(
         "batch_size":    BATCH_SIZE,
         "epochs":        EPOCHS,
         "lr":            LR,
-        "warmup_ratio":  WARMUP_RATIO,
-        "weight_decay":  WEIGHT_DECAY,
-        "class_weights": CLASS_WEIGHTS,
+        "warmup_ratio":      WARMUP_RATIO,
+        "weight_decay":      WEIGHT_DECAY,
+        "label_smoothing":   LABEL_SMOOTHING,
+        "class_weights":     CLASS_WEIGHTS,
+        "scheduler":         "cosine",
         "seed":          SEED,
         "n_train":       len(X_tr),
         "n_val":         len(X_val),
