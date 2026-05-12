@@ -1017,3 +1017,11 @@ Likely highest-leverage next moves (in order):
   Change: Replace base LR (ROC-AUC 0.6582, lowest by ~0.02) with XGBoost
   Rationale: LR is the weakest link in the ensemble
 
+
+------------------------------------------------------
+
+Experiment: A
+  Change: Enable fe_add_speaker_true_rate=True / drop_speaker_true_rate=False
+  Rationale: Currently disabled to match CatBoost-optB config, but stacking context is different — RFC and LGBM may
+    benefit from this leakage-safe feature
+

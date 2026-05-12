@@ -10,7 +10,7 @@ Architecture
 - Threshold tuning on stacked OOF.
 - Final evaluation on holdout.
 
-True-rate features: drop_speaker_true_rate=True (CatBoost-optB config, the best individual model).
+True-rate features: drop_speaker_true_rate=False (Experiment A — speaker true-rate enabled; fold-safe).
 LR base model: fitted on StandardScaler-transformed features inside each fold.
 """
 from datetime import datetime
@@ -515,8 +515,8 @@ enable_threshold_tuning = True
 overwrite_threshold     = True
 THRESHOLD_METRIC        = "macro_f1"
 
-# Option B: drop fe_speaker_true_rate — the winning config from both LGBM and CatBoost
-drop_speaker_true_rate = True
+# Experiment A: enable fe_speaker_true_rate (fold-safe; recomputed inside each CV fold)
+drop_speaker_true_rate = False
 enable_true_rate_features = True
 true_rate_fallback = 0.5
 
