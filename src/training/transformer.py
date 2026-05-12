@@ -45,7 +45,7 @@ from sklearn.metrics import (
     precision_recall_curve,
 )
 from sklearn.model_selection import train_test_split
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 from transformers import (
@@ -192,7 +192,7 @@ optimizer    = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
 total_steps  = len(train_loader) * EPOCHS
 warmup_steps = int(total_steps * WARMUP_RATIO)
 scheduler    = get_linear_schedule_with_warmup(optimizer, warmup_steps, total_steps)
-scaler       = GradScaler(enabled=USE_AMP)
+scaler       = GradScaler("cuda", enabled=USE_AMP)
 
 
 # ============================================================
@@ -231,7 +231,7 @@ def train_epoch(model, loader, optimizer, scheduler, criterion, scaler) -> float
         inputs = {k: v.to(device) for k, v in inputs.items()}
         labs   = labs.to(device)
         optimizer.zero_grad()
-        with autocast(enabled=USE_AMP):
+        with autocast("cuda", enabled=USE_AMP):
             loss = criterion(model(**inputs).logits, labs)
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
@@ -249,7 +249,7 @@ def evaluate(model, loader) -> tuple[float, np.ndarray, np.ndarray]:
     all_logits, all_labels, total_loss = [], [], 0.0
     for inputs, labs in loader:
         inputs = {k: v.to(device) for k, v in inputs.items()}
-        with autocast(enabled=USE_AMP):
+        with autocast("cuda", enabled=USE_AMP):
             logits = model(**inputs).logits
             loss   = criterion(logits, labs.to(device))
         total_loss += loss.item()
@@ -426,7 +426,7 @@ if create_kaggle_csv:
     with torch.no_grad():
         for i in range(0, len(test_texts), _bsz):
             batch  = {k: v[i:i + _bsz].to(device) for k, v in test_enc.items()}
-            with autocast(enabled=USE_AMP):
+            with autocast("cuda", enabled=USE_AMP):
                 logits = model(**batch).logits
             proba = torch.softmax(logits.float(), dim=-1)[:, 1].cpu().numpy()
             all_proba.append(proba)
