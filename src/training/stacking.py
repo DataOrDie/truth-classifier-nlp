@@ -10,7 +10,7 @@ Architecture
 - Threshold tuning on stacked OOF.
 - Final evaluation on holdout.
 
-True-rate features: drop_speaker_true_rate=False (Experiment A — speaker true-rate enabled; fold-safe).
+True-rate features: drop_speaker_true_rate=True (confirmed best — speaker true-rate collapses ensemble diversity).
 LR base model: fitted on StandardScaler-transformed features inside each fold.
 """
 from datetime import datetime
@@ -515,8 +515,8 @@ enable_threshold_tuning = True
 overwrite_threshold     = True
 THRESHOLD_METRIC        = "macro_f1"
 
-# Experiment A: enable fe_speaker_true_rate (fold-safe; recomputed inside each CV fold)
-drop_speaker_true_rate = False
+# drop_speaker_true_rate=True confirmed best across individual models AND stacking ensemble
+drop_speaker_true_rate = True
 enable_true_rate_features = True
 true_rate_fallback = 0.5
 
@@ -532,7 +532,7 @@ BASE_LGBM_HP = dict(n_estimators=500, learning_rate=0.03, num_leaves=63,
                     reg_alpha=0.0, reg_lambda=0.0,
                     class_weight=CLASS_WEIGHT_D, n_jobs=-1, random_state=42, verbose=-1)
 
-BASE_CAT_HP = dict(iterations=300, learning_rate=0.03, depth=4, l2_leaf_reg=5,
+BASE_CAT_HP = dict(iterations=300, learning_rate=0.03, depth=6, l2_leaf_reg=5,  # Exp B: depth 4→6
                    border_count=32, bagging_temperature=0.0,
                    class_weights=CLASS_WEIGHTS, thread_count=-1, random_seed=42, verbose=0)
 

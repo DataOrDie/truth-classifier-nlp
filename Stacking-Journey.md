@@ -1025,3 +1025,134 @@ Experiment: A
   Rationale: Currently disabled to match CatBoost-optB config, but stacking context is different — RFC and LGBM may
     benefit from this leakage-safe feature
 
+--> Experiment A Output
+[SECTION] Cross-validation summary  [total CV: 232.3s]
+  roc_auc_avg: 0.6651 ± 0.0053
+  macro_f1_avg: 0.6063 ± 0.0020
+  roc_auc_lr: 0.6387 ± 0.0075
+  roc_auc_rfc: 0.6596 ± 0.0033
+  roc_auc_lgbm: 0.6585 ± 0.0034
+  roc_auc_cat: 0.6567 ± 0.0045
+
+[SECTION] Training meta-LR on stacked OOF  [21:24:09]
+  Meta-LR coefficients: {'lr': 0.5770345381325577, 'rfc': 1.0072205352422503, 'lgbm': 0.7273566636756602, 'cat': 0.7538697598578494}
+
+[SECTION] Threshold tuning on stacked OOF  [21:24:09]
+   threshold   macro_f1
+        0.20   0.3930
+        0.21   0.3930
+        0.22   0.3930
+        0.23   0.3930
+        0.24   0.3930
+        0.25   0.3930
+        0.26   0.3930
+        0.27   0.3930
+        0.28   0.3930
+        0.29   0.3930
+        0.30   0.3939
+        0.31   0.3947
+        0.32   0.3955
+        0.33   0.3969
+        0.34   0.4006
+        0.35   0.4068
+        0.36   0.4148
+        0.37   0.4272
+        0.38   0.4338
+        0.39   0.4417
+        0.40   0.4517
+        0.41   0.4601
+        0.42   0.4728
+        0.43   0.4829
+        0.44   0.4899
+        0.45   0.5021
+        0.46   0.5131
+        0.47   0.5205
+        0.48   0.5277
+        0.49   0.5377
+        0.50   0.5476
+        0.51   0.5565
+        0.52   0.5671
+        0.53   0.5761
+        0.54   0.5829
+        0.55   0.5915
+        0.56   0.5951
+        0.57   0.5980
+        0.58   0.6054
+        0.59   0.6090
+        0.60   0.6132
+        0.61   0.6150  ←
+        0.62   0.6142
+        0.63   0.6137
+        0.64   0.6139
+        0.65   0.6106
+        0.66   0.6079
+        0.67   0.6028
+        0.68   0.5945
+        0.69   0.5884
+        0.70   0.5779
+        0.71   0.5685
+        0.72   0.5567
+        0.73   0.5424
+        0.74   0.5222
+        0.75   0.5044
+        0.76   0.4789
+
+  Best threshold: 0.61  (OOF macro_f1=0.6150)
+  THRESHOLD updated: 0.50 → 0.61
+[SECTION] Fitting final base models on full train/val set  [21:24:10]
+  Done in 57.8s
+[SECTION] Evaluating on holdout set  [21:25:08]
+  Using threshold: 0.61
+
+Holdout results:
+  roc_auc: 0.6816
+  pr_auc: 0.7896
+  macro_f1: 0.6193
+  f1: 0.7187
+  precision: 0.7386
+  recall: 0.6997
+  accuracy: 0.6453
+  mcc: 0.2403
+  balanced_acc: 0.6225
+
+              precision    recall  f1-score   support
+
+           0       0.50      0.55      0.52       631
+           1       0.74      0.70      0.72      1159
+
+    accuracy                           0.65      1790
+   macro avg       0.62      0.62      0.62      1790
+weighted avg       0.65      0.65      0.65      1790
+
+  Base model holdout ROC-AUC:
+    LR  : 0.6618
+    RFC : 0.6736
+    LGBM: 0.6699
+    CAT : 0.6710
+
+**Result: clear regression — revert. drop_speaker_true_rate=True is confirmed correct for mpnet stacking.**
+
+| Metric | Baseline (drop=True) | Exp A (drop=False) | Delta |
+|--------|---------------------|-------------------|-------|
+| Holdout macro_f1 | 0.6428 | 0.6193 | **−0.0235** |
+| Holdout ROC-AUC | 0.6995 | 0.6816 | **−0.0179** |
+| CV roc_auc_avg | 0.6724 | 0.6651 | −0.0073 |
+| RFC meta weight | 1.238 | 1.007 | collapsed |
+| RFC holdout AUC | 0.6926 | 0.6736 | −0.019 |
+| LGBM holdout AUC | 0.6850 | 0.6699 | −0.015 |
+| CAT holdout AUC | 0.6848 | 0.6710 | −0.014 |
+
+**Root cause — speaker_true_rate collapses ensemble diversity:**
+- Every base model degraded; this is not an overfitting artifact but a genuine diversity collapse
+- Speaker_true_rate is so dominant a signal that all tree models converge on it, making their OOF probas highly correlated — the meta-LR has less orthogonal signal to combine
+- RFC's meta weight collapsed 1.238 → 1.007; LGBM and CAT also lost weight — the meta-LR is saying "none of you are adding much beyond each other"
+- The other speaker features (speaker_grouped ordinal, speaker_frequency, etc.) already encode speaker-level credibility indirectly; adding the explicit rate doesn't introduce new information, it just adds a noisy duplicate that drowns out the diversity
+- This is consistent with the CatBoost journey finding: `drop_speaker_true_rate=True` wins across individual models AND the stacking ensemble
+
+**Next: Experiment B — CatBoost depth 4 → 6 (with drop_speaker_true_rate=True restored)**
+
+------------------------------------------------
+
+  Experiment: B
+  Change: Raise CatBoost depth 4 → 6
+  Rationale: At depth=4 with 300 iterations, CAT may be underfitting; LGBM with num_leaves=63 is effectively deeper
