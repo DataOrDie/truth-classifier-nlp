@@ -877,10 +877,120 @@ weighted avg       0.66      0.63      0.64      1790
 
 
 ------------------------------------
+Text columns dropped    : ['party_affiliation_clean', 'speaker_clean', 'speaker_job_clean', 'state_info_clean', 'statement', 'statement_clean', 'subject_clean']
+  Categorical cols encoded: ['subject_primary', 'subject_primary_grouped', 'speaker_grouped', 'speaker_job_grouped', 'party_affiliation_grouped', 'state_info_grouped', 'state_info_us_region', 'fe_speaker_subject', 'fe_speaker_party', 'fe_subject_party', 'fe_speaker_job_subject', 'fe_state_party', 'fe_speaker_len_bucket']
+[SECTION] Building feature matrix
+  Vectorizer features     : 768
+  Encoded cat features    : 13  →  ['subject_primary', 'subject_primary_grouped', 'speaker_grouped', 'speaker_job_grouped', 'party_affiliation_grouped', 'state_info_grouped', 'state_info_us_region', 'fe_speaker_subject', 'fe_speaker_party', 'fe_subject_party', 'fe_speaker_job_subject', 'fe_state_party', 'fe_speaker_len_bucket']
+  Other numeric features  : 69  →  ['subject_topic_count', 'subject_has_multiple_topics', 'subject_length', 'subject_token_count', 'subject_frequency', 'subject_is_rare', 'statement_row_spillover_flag', 'statement_tab_count', 'statement_newline_count', 'statement_original_char_len', 'statement_original_word_count', 'statement_upper_ratio', 'statement_exclamation_count', 'statement_question_count', 'statement_clean_digit_ratio', 'statement_clean_rare_token_count', 'statement_clean_avg_token_freq', 'statement_clean_spelling_err_count', 'statement_original_total_entities', 'statement_original_PERSON', 'statement_original_ORG', 'statement_original_GPE', 'statement_original_DATE', 'statement_original_NUM', 'statement_original_OTHER', 'speaker_frequency', 'speaker_frequency_pct', 'speaker_is_rare', 'speaker_char_len', 'speaker_token_count', 'speaker_has_title', 'speaker_has_comma', 'speaker_has_period', 'speaker_job_frequency', 'speaker_job_frequency_pct', 'speaker_job_is_rare', 'speaker_job_char_len', 'speaker_job_token_count', 'speaker_job_has_title', 'speaker_job_has_comma', 'speaker_job_has_slash', 'speaker_job_has_ampersand', 'party_affiliation_frequency', 'party_affiliation_frequency_pct', 'party_affiliation_is_rare', 'party_affiliation_char_len', 'party_affiliation_token_count', 'party_affiliation_has_slash', 'party_affiliation_has_ampersand', 'party_affiliation_has_parentheses', 'party_affiliation_is_major_party', 'party_affiliation_is_institutional', 'state_info_frequency', 'state_info_frequency_pct', 'state_info_is_rare', 'state_info_is_us_state', 'state_info_token_count', 'state_info_has_us_words', 'fe_speaker_avg_statement_len', 'fe_subject_avg_statement_len', 'fe_speaker_avg_punctuation', 'fe_speaker_avg_number_ratio', 'fe_negation_count', 'fe_hedge_count', 'fe_absolutist_count', 'fe_numeral_count', 'fe_readability', 'fe_sentiment_polarity', 'fe_sentiment_subjectivity']
+  Total features          : 850
 
 Update Stacking to use "all-mpnet-base-v2" embeddings
 
-<lastest results here>
+--> Run Stacking with "all-mpnet-base-v2" embeddings 
+ [SECTION] Cross-validation summary  [total CV: 229.4s]
+  roc_auc_avg: 0.6724 ± 0.0092
+  macro_f1_avg: 0.6110 ± 0.0062
+  roc_auc_lr: 0.6326 ± 0.0082
+  roc_auc_rfc: 0.6721 ± 0.0079
+  roc_auc_lgbm: 0.6676 ± 0.0115
+  roc_auc_cat: 0.6633 ± 0.0087
+
+[SECTION] Training meta-LR on stacked OOF  [20:59:57]
+  Meta-LR coefficients: {'lr': 0.4986125569601204, 'rfc': 1.2383167288853327, 'lgbm': 1.0144474437916642, 'cat': 0.9613586214902322}
+
+[SECTION] Threshold tuning on stacked OOF  [20:59:57]
+   threshold   macro_f1
+        0.20   0.3930
+        0.21   0.3930
+        0.22   0.3930
+        0.23   0.3930
+        0.24   0.3930
+        0.25   0.3930
+        0.26   0.3930
+        0.27   0.3943
+        0.28   0.3951
+        0.29   0.3954
+        0.30   0.3970
+        0.31   0.4003
+        0.32   0.4037
+        0.33   0.4093
+        0.34   0.4125
+        0.35   0.4223
+        0.36   0.4303
+        0.37   0.4377
+        0.38   0.4450
+        0.39   0.4547
+        0.40   0.4640
+        0.41   0.4754
+        0.42   0.4868
+        0.43   0.4956
+        0.44   0.5079
+        0.45   0.5160
+        0.46   0.5278
+        0.47   0.5351
+        0.48   0.5433
+        0.49   0.5536
+        0.50   0.5651
+        0.51   0.5719
+        0.52   0.5806
+        0.53   0.5904
+        0.54   0.5936
+        0.55   0.5990
+        0.56   0.6069
+        0.57   0.6114
+        0.58   0.6147
+        0.59   0.6188
+        0.60   0.6208
+        0.61   0.6228  ←
+        0.62   0.6209
+        0.63   0.6200
+        0.64   0.6184
+        0.65   0.6133
+        0.66   0.6123
+        0.67   0.6084
+        0.68   0.6036
+        0.69   0.5974
+        0.70   0.5902
+        0.71   0.5774
+        0.72   0.5685
+        0.73   0.5539
+        0.74   0.5402
+        0.75   0.5199
+        0.76   0.4994
+
+  Best threshold: 0.61  (OOF macro_f1=0.6228)
+  THRESHOLD updated: 0.50 → 0.61
+[SECTION] Fitting final base models on full train/val set  [20:59:58]
+  Done in 56.7s
+[SECTION] Evaluating on holdout set  [21:00:55]
+  Using threshold: 0.61
+
+Holdout results:
+  roc_auc: 0.6995
+  pr_auc: 0.8031
+  macro_f1: 0.6428
+  f1: 0.7348
+  precision: 0.7573
+  recall: 0.7135
+  accuracy: 0.6665
+  mcc: 0.2876
+  balanced_acc: 0.6468
+
+              precision    recall  f1-score   support
+
+           0       0.52      0.58      0.55       631
+           1       0.76      0.71      0.73      1159
+
+    accuracy                           0.67      1790
+   macro avg       0.64      0.65      0.64      1790
+weighted avg       0.68      0.67      0.67      1790
+
+  Base model holdout ROC-AUC:
+    LR  : 0.6720
+    RFC : 0.6926
+    LGBM: 0.6850
+    CAT : 0.6848
 
 
 
