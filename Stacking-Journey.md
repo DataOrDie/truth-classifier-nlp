@@ -767,3 +767,132 @@ Base model holdout AUC: RFC 0.6751 in runs 3 and 4, up from 0.6738 in run 2. The
 Changing `np.arange(0.20, 0.76, 0.02)` to `np.arange(0.20, 0.76, 0.01)` gives 56 evaluation points instead of 28. In the critical 0.60–0.66 range this means 7 points instead of 3 — enough resolution to see whether 0.61, 0.62, or 0.63 is the true peak rather than having two 0.02-spaced points both rounding to the same score.
 
 Applied to `stacking.py` for run 5. RFC=500 and num_leaves=63 kept, no other changes.
+
+----------------------------------
+
+--> Execution Output for run 5. RFC=500 and num_leaves=63 kept, no other changes.
+[SECTION] Cross-validation summary  [total CV: 132.1s]
+  roc_auc_avg: 0.6628 ± 0.0125
+  macro_f1_avg: 0.6030 ± 0.0104
+  roc_auc_lr: 0.6359 ± 0.0090
+  roc_auc_rfc: 0.6679 ± 0.0117
+  roc_auc_lgbm: 0.6528 ± 0.0168
+  roc_auc_cat: 0.6573 ± 0.0145
+
+[SECTION] Training meta-LR on stacked OOF  [12:04:35]
+  Meta-LR coefficients: {'lr': 0.5889197570339592, 'rfc': 1.457057044843211, 'lgbm': 0.7013970151711584, 'cat': 1.0243948725474625}
+
+[SECTION] Threshold tuning on stacked OOF  [12:04:35]
+   threshold   macro_f1
+        0.20   0.3930
+        0.21   0.3930
+        0.22   0.3930
+        0.23   0.3930
+        0.24   0.3930
+        0.25   0.3930
+        0.26   0.3930
+        0.27   0.3930
+        0.28   0.3934
+        0.29   0.3942
+        0.30   0.3946
+        0.31   0.3967
+        0.32   0.3978
+        0.33   0.4006
+        0.34   0.4058
+        0.35   0.4093
+        0.36   0.4144
+        0.37   0.4222
+        0.38   0.4289
+        0.39   0.4344
+        0.40   0.4445
+        0.41   0.4576
+        0.42   0.4684
+        0.43   0.4799
+        0.44   0.4904
+        0.45   0.4979
+        0.46   0.5083
+        0.47   0.5208
+        0.48   0.5306
+        0.49   0.5431
+        0.50   0.5542
+        0.51   0.5611
+        0.52   0.5695
+        0.53   0.5758
+        0.54   0.5803
+        0.55   0.5895
+        0.56   0.5940
+        0.57   0.5963
+        0.58   0.6011
+        0.59   0.6067
+        0.60   0.6068
+        0.61   0.6085
+        0.62   0.6099
+        0.63   0.6096
+        0.64   0.6099  ←
+        0.65   0.6062
+        0.66   0.6055
+        0.67   0.5989
+        0.68   0.5939
+        0.69   0.5837
+        0.70   0.5744
+        0.71   0.5630
+        0.72   0.5492
+        0.73   0.5359
+        0.74   0.5179
+        0.75   0.4973
+        0.76   0.4746
+
+  Best threshold: 0.64  (OOF macro_f1=0.6099)
+  THRESHOLD updated: 0.50 → 0.64
+[SECTION] Fitting final base models on full train/val set  [12:04:37]
+  Done in 30.7s
+[SECTION] Evaluating on holdout set  [12:05:07]
+  Using threshold: 0.64
+
+Holdout results:
+  roc_auc: 0.6835
+  pr_auc: 0.7849
+  macro_f1: 0.6168
+  f1: 0.6928
+  precision: 0.7535
+  recall: 0.6411
+  accuracy: 0.6318
+  mcc: 0.2459
+  balanced_acc: 0.6280
+
+              precision    recall  f1-score   support
+
+           0       0.48      0.61      0.54       631
+           1       0.75      0.64      0.69      1159
+
+    accuracy                           0.63      1790
+   macro avg       0.62      0.63      0.62      1790
+weighted avg       0.66      0.63      0.64      1790
+
+  Base model holdout ROC-AUC:
+    LR  : 0.6582
+    RFC : 0.6751
+    LGBM: 0.6766
+    CAT : 0.6740
+
+Likely highest-leverage next moves (in order):
+
+  Experiment: A
+  Change: Enable fe_add_speaker_true_rate=True / drop_speaker_true_rate=False
+  Rationale: Currently disabled to match CatBoost-optB config, but stacking context is different — RFC and LGBM may
+    benefit from this leakage-safe feature
+  ────────────────────────────────────────
+  Experiment: B
+  Change: Raise CatBoost depth 4 → 6
+  Rationale: At depth=4 with 300 iterations, CAT may be underfitting; LGBM with num_leaves=63 is effectively deeper
+  ────────────────────────────────────────
+  Experiment: C
+  Change: Try soft voting (simple average of 4 base probas) instead of meta-LR
+  Rationale: Meta-LR on 4 inputs with N=7,160 samples is low-data; if base models are well-calibrated, simple average
+  can
+    beat it
+  ────────────────────────────────────────
+  Experiment: D
+  Change: Replace base LR (ROC-AUC 0.6582, lowest by ~0.02) with XGBoost
+  Rationale: LR is the weakest link in the ensemble
+
