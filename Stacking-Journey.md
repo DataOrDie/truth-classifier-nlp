@@ -1339,3 +1339,201 @@ Mixed result — CAT itself improved significantly, but the ensemble F1 slipped.
 - Ensemble holdout macro_f1 target: >0.6428 — if XGB adds real complementary signal on top of RFC, this is achievable
 - Warning sign: if LGBM and XGB weights both drop while RFC's weight spikes, XGB and LGBM are correlated and the ensemble is now RFC-dominated
 
+---> Output Run Experiment D
+[SECTION] Cross-validation summary  [total CV: 294.2s]
+  roc_auc_avg: 0.6742 ± 0.0085
+  macro_f1_avg: 0.6052 ± 0.0043
+  roc_auc_xgb: 0.6651 ± 0.0062
+  roc_auc_rfc: 0.6721 ± 0.0079
+  roc_auc_lgbm: 0.6676 ± 0.0115
+  roc_auc_cat: 0.6633 ± 0.0087
+
+[SECTION] Training meta-LR on stacked OOF  [22:45:17]
+  Meta-LR coefficients: {'xgb': 0.8305771534851454, 'rfc': 1.1238730664135632, 'lgbm': 0.8449909148376452, 'cat': 0.8808622336673982}
+
+[SECTION] Threshold tuning on stacked OOF  [22:45:17]
+   threshold   macro_f1
+        0.20   0.3930
+        0.21   0.3930
+        0.22   0.3930
+        0.23   0.3930
+        0.24   0.3930
+        0.25   0.3930
+        0.26   0.3930
+        0.27   0.3939
+        0.28   0.3959
+        0.29   0.3962
+        0.30   0.3979
+        0.31   0.4027
+        0.32   0.4057
+        0.33   0.4108
+        0.34   0.4173
+        0.35   0.4243
+        0.36   0.4311
+        0.37   0.4389
+        0.38   0.4480
+        0.39   0.4583
+        0.40   0.4674
+        0.41   0.4775
+        0.42   0.4887
+        0.43   0.4998
+        0.44   0.5083
+        0.45   0.5196
+        0.46   0.5275
+        0.47   0.5388
+        0.48   0.5465
+        0.49   0.5573
+        0.50   0.5673
+        0.51   0.5774
+        0.52   0.5818
+        0.53   0.5906
+        0.54   0.5944
+        0.55   0.6012
+        0.56   0.6066
+        0.57   0.6120
+        0.58   0.6143
+        0.59   0.6173
+        0.60   0.6204
+        0.61   0.6237  ←
+        0.62   0.6208
+        0.63   0.6187
+        0.64   0.6164
+        0.65   0.6137
+        0.66   0.6114
+        0.67   0.6057
+        0.68   0.6022
+        0.69   0.5971
+        0.70   0.5898
+        0.71   0.5789
+        0.72   0.5687
+        0.73   0.5547
+        0.74   0.5340
+        0.75   0.5179
+        0.76   0.4970
+
+  Best threshold: 0.61  (OOF macro_f1=0.6237)
+  THRESHOLD updated: 0.50 → 0.61
+[SECTION] Fitting final base models on full train/val set  [22:45:18]
+  Done in 70.4s
+[SECTION] Evaluating on holdout set  [22:46:28]
+  Using threshold: 0.61
+
+Holdout results:
+  roc_auc: 0.6972
+  pr_auc: 0.8013
+  macro_f1: 0.6426
+  f1: 0.7350
+  precision: 0.7569
+  recall: 0.7144
+  accuracy: 0.6665
+  mcc: 0.2870
+  balanced_acc: 0.6464
+
+              precision    recall  f1-score   support
+
+           0       0.52      0.58      0.55       631
+           1       0.76      0.71      0.74      1159
+
+    accuracy                           0.67      1790
+   macro avg       0.64      0.65      0.64      1790
+weighted avg       0.67      0.67      0.67      1790
+
+  Base model holdout ROC-AUC:
+    XGB : 0.6958
+    RFC : 0.6926
+    LGBM: 0.6850
+    CAT : 0.6848
+
+---
+
+## Experiment D Analysis — XGBoost replaces base LR
+
+### Config
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Base models | XGB + RFC + LGBM + CatBoost → meta-LR | LR replaced |
+| Embeddings | `all-mpnet-base-v2` (768-dim) | Unchanged |
+| drop_speaker_true_rate | True | Unchanged |
+| XGB n_estimators | 500 | — |
+| XGB max_depth | 6 | — |
+| XGB learning_rate | 0.03 | — |
+| XGB subsample / colsample_bytree | 0.8 / 0.8 | — |
+| XGB reg_alpha / reg_lambda | 0.1 / 1.0 | — |
+| CAT depth | 4 | Restored from baseline |
+| All other HPs | Unchanged | — |
+
+### Performance vs baseline
+
+| Metric | Baseline (LR) | Exp D (XGB) | Delta |
+|--------|--------------|-------------|-------|
+| Holdout macro_f1 | **0.6428** | 0.6426 | −0.0002 |
+| Holdout ROC-AUC | **0.6995** | 0.6972 | −0.0023 |
+| OOF macro_f1 (tuned threshold) | 0.6228 | **0.6237** | +0.0009 |
+| CV roc_auc_avg | 0.6724 | **0.6742** | +0.0018 |
+| LR→XGB holdout AUC | 0.6720 | **0.6958** | **+0.0238** |
+| RFC holdout AUC | 0.6926 | 0.6926 | 0 |
+| LGBM holdout AUC | 0.6850 | 0.6850 | 0 |
+| CAT holdout AUC | 0.6848 | 0.6848 | 0 |
+| Threshold | 0.61 | 0.61 | — |
+
+### Meta-LR coefficient shift
+
+| Base model | Baseline coef | Exp D coef | Delta |
+|------------|--------------|-----------|-------|
+| RFC | **1.238** | 1.124 | −0.114 |
+| XGB (was LR) | 0.499 | 0.831 | **+0.332** |
+| CAT | 0.961 | 0.881 | −0.080 |
+| LGBM | 1.014 | 0.845 | −0.169 |
+| **Spread (max−min)** | 0.739 | **0.293** | −0.446 |
+
+### Key observations
+
+- XGB clearly outperforms LR as an individual model (0.6958 vs 0.6720, +0.024 AUC) — base model swap worked as intended
+- Ensemble is now far more balanced: coefficient spread compressed from 0.739 (0.499–1.238) to 0.293 (0.831–1.124) — no more weak link
+- RFC still the highest coefficient (1.124) but its dominance decreased (1.238 → 1.124); XGB contributes real signal where LR barely did
+- Holdout macro_f1 is effectively unchanged (−0.0002): within single-run noise, not a meaningful difference
+- Holdout ROC-AUC regressed slightly (−0.0023): worse than baseline
+- Warning sign from the pre-run analysis partially triggered: XGB (0.831) and LGBM (0.845) sit at nearly identical weights, consistent with two correlated gradient boosting models
+
+### Root cause — diversity-accuracy trade-off breaks even
+
+XGB replacing LR is a direct exchange: better raw performance (+0.024 AUC) for less diversity. LR's linear decision boundary was the only non-tree signal in the ensemble. XGB at max_depth=6 is a gradient boosting method sharing the same inductive bias family as LGBM — both use leaf-wise splits on the same 850 embedding+metadata features. The meta-LR now combines four tree-based models instead of three trees + one linear model.
+
+The result is a wash on the primary metric: the AUC gain from XGB is almost exactly offset by the diversity loss. OOF macro_f1 improved slightly (+0.0009), holdout macro_f1 is unchanged (−0.0002), ROC-AUC regressed (−0.0023).
+
+The tree-model saturation hypothesis is confirmed: within the shared all-mpnet-base-v2 embedding space, substituting or tuning tree models yields diminishing returns. All four models extract the same signal from the same 768 embedding dimensions — they agree on what the embedding can distinguish and fail together on what it can't.
+
+### Decision: keep XGB, acknowledge the plateau
+
+The primary metric (macro_f1) is statistically unchanged. Reverting to LR would recover 0.0023 ROC-AUC while introducing a demonstrably weaker base model. Keep XGB — it removes the weak link with no cost to the competition metric, and the more balanced ensemble is a cleaner foundation for future fusion experiments.
+
+The stacking ensemble is plateaued at ~0.6428 macro_f1. All tree-based variations (depth, n_estimators, base model swaps) have been exhausted at marginal or neutral outcomes. The ceiling is structural: four models sharing the same feature space converge on the same errors.
+
+---
+
+## What's Next: Late Fusion (Option C) — Add Transformer Signal
+
+**The one untested axis: full-sequence attention**
+
+Every stacking experiment so far has tuned models within the all-mpnet-base-v2 feature space. The only signal the stacking pipeline doesn't have is the transformer's token-level attention — DeBERTa-v3-small Run 7 (holdout macro_f1=0.6205) processes statements word-by-word with position-aware attention, architecturally orthogonal to aggregate sentence embeddings.
+
+**Change:** Add transformer R7's OOF probabilities as a 5th column in the meta-LR input matrix.
+
+**Two implementation paths:**
+
+1. **Proper OOF (recommended):** Add 5-fold CV to `transformer.py`, collect and save per-fold validation probas. Load in `stacking.py` as `oof_transformer`, stack as 5th column. The meta-LR learns the correct weight for transformer signal. Architecturally correct and unbiased.
+
+2. **Quick approximation:** Run transformer R7 inference on the full trainval set (in-sample, biased probas) as the 5th column. The meta-LR will modestly overfit to transformer's training confidence, but C=0.1 regularisation limits the damage. Useful as a fast signal check before investing in proper OOF collection.
+
+**Decision rationale:** Transformer R7 holdout macro_f1=0.6205 is below stacking's 0.6428, so it's a weaker individual model. But the meta-LR only needs it to carry errors that are decorrelated from the tree models — not to be the best model. The key question is whether DeBERTa's attention-based errors on class 0 (true statements) differ from the tree models' errors. Both currently struggle with class 0 recall: stacking 0.58, transformer 0.55. The overlap is real but not total — subword tokenisation, positional context, and attention over long-range dependencies will catch some cases that embedding averaging misses.
+
+**Expected behavior:**
+- Transformer 5th coefficient: 0.3–0.8 if it adds genuine complementary signal; near 0 if it's redundant with tree models; negative if misleading
+- Holdout macro_f1 target: 0.644–0.650 — a gain of 0.001–0.007 is realistic if class-0 error profiles are sufficiently different
+- Class 0 recall: the key diagnostic — if transformer's class-0 errors decorrelate from tree models' class-0 errors, that's where the gain will appear
+
+**Warning signs:**
+- Transformer coefficient < 0.3 after regularisation → redundant with the tree stack, skip late fusion
+- Class 0 recall unchanged → transformer and stacking fail on the same true statements
+- OOF macro_f1 gain < 0.003 → noise from imperfect OOF collection outweighs the signal
