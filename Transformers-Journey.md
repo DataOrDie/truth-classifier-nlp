@@ -1126,3 +1126,252 @@ weighted avg       0.66      0.67      0.66      1790
 - Best checkpoint will likely be epoch 3 or 4; if still improving at epoch 5, R7 would extend further
 - Total runtime ~2× longer than R5 (~75–80 seconds for 5 epochs of backbone fine-tuning)
 
+--------------------------------------
+
+--> Run 6 Output - Run 6 — More epochs (EPOCHS=5, FREEZE_EPOCHS=1)
+
+[SECTION] Loading data  [20:25:50]
+  Rows: 8,950  |  Labels: {1: 5795, 0: 3155}
+
+[SECTION] Dataset features
+  Used       : ['statement']  (raw text, tokenized)
+  Not used   : ['subject', 'speaker', 'speaker_job', 'state_info', 'party_affiliation']
+  Token len  : min=2  median=17  p99=41  max=467
+  subject               : 3409 unique  top-3=['health-care', 'taxes', 'elections']
+  speaker               : 2634 unique  top-3=['barack-obama', 'donald-trump', 'hillary-clinton']
+  speaker_job           : 1090 unique  top-3=['President', 'U.S. Senator', 'Governor']
+  state_info            :   78 unique  top-3=['Texas', 'Florida', 'Wisconsin']
+  party_affiliation     :   24 unique  top-3=['republican', 'democrat', 'none']
+  Train: 6,444   Val: 716   Holdout: 1,790
+
+[SECTION] Tokenizing  [20:25:50]
+  Tokenized in 0.7s
+
+[SECTION] Loading model: microsoft/deberta-v3-small  [20:25:52]
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights: 100%|████████████████████████████████████████████████████████████| 102/102 [00:00<00:00, 6147.88it/s]
+[transformers] DebertaV2ForSequenceClassification LOAD REPORT from: microsoft/deberta-v3-small
+Key                                     | Status     | 
+----------------------------------------+------------+-
+lm_predictions.lm_head.LayerNorm.weight | UNEXPECTED | 
+lm_predictions.lm_head.LayerNorm.bias   | UNEXPECTED | 
+mask_predictions.classifier.weight      | UNEXPECTED | 
+lm_predictions.lm_head.bias             | UNEXPECTED | 
+mask_predictions.LayerNorm.weight       | UNEXPECTED | 
+mask_predictions.dense.weight           | UNEXPECTED | 
+mask_predictions.classifier.bias        | UNEXPECTED | 
+mask_predictions.LayerNorm.bias         | UNEXPECTED | 
+lm_predictions.lm_head.dense.bias       | UNEXPECTED | 
+mask_predictions.dense.bias             | UNEXPECTED | 
+lm_predictions.lm_head.dense.weight     | UNEXPECTED | 
+pooler.dense.bias                       | MISSING    | 
+pooler.dense.weight                     | MISSING    | 
+classifier.bias                         | MISSING    | 
+classifier.weight                       | MISSING    | 
+
+Notes:
+- UNEXPECTED:   can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+- MISSING:      those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+  Parameters: 141,896,450
+  Backbone frozen — frozen=141,304,320  trainable=592,130
+  Phase 1 optimizer — 4 param tensors  lr=2.0e-05
+
+[SECTION] Training  [20:25:56]
+  Model dtype     : torch.float32
+  loss_weights    : tensor([1.4200, 0.7700], device='cuda:0')
+  Train batches   : 403  Val batches: 23
+
+  --- Epoch 1/5 ---  [20:25:56]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.6651
+    Batch 50/403  avg_loss=0.7038
+    Batch 100/403  avg_loss=0.6990
+    Batch 150/403  avg_loss=0.6981
+    Batch 200/403  avg_loss=0.6977
+    Batch 250/403  avg_loss=0.6966
+    Batch 300/403  avg_loss=0.6965
+    Batch 350/403  avg_loss=0.6960
+    Batch 400/403  avg_loss=0.6957
+  Train loss: 0.6957  — starting val evaluation
+  Val proba range: [0.5020, 0.5138]  NaNs: 0
+  Epoch 1/5  train_loss=0.6957  val_loss=0.6927  val_macro_f1=0.3932  val_roc_auc=0.5709  (9.1s)
+    New best val macro_f1=0.3932 — checkpoint saved
+
+  [Phase 2] Unfreezing backbone + rebuilding optimizer with LLRD
+  Backbone unfrozen — trainable=141,896,450
+  LLRD groups: 16  LR range: [9.57e-06, 2.00e-05]
+
+  --- Epoch 2/5 ---  [20:26:06]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.7023
+    Batch 50/403  avg_loss=0.6955
+    Batch 100/403  avg_loss=0.6956
+    Batch 150/403  avg_loss=0.6957
+    Batch 200/403  avg_loss=0.6938
+    Batch 250/403  avg_loss=0.6898
+    Batch 300/403  avg_loss=0.6866
+    Batch 350/403  avg_loss=0.6817
+    Batch 400/403  avg_loss=0.6810
+  Train loss: 0.6815  — starting val evaluation
+  Val proba range: [0.2088, 0.7831]  NaNs: 0
+  Epoch 2/5  train_loss=0.6815  val_loss=0.6525  val_macro_f1=0.5945  val_roc_auc=0.6651  (28.9s)
+    New best val macro_f1=0.5945 — checkpoint saved
+
+  --- Epoch 3/5 ---  [20:26:35]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.7886
+    Batch 50/403  avg_loss=0.6206
+    Batch 100/403  avg_loss=0.6293
+    Batch 150/403  avg_loss=0.6307
+    Batch 200/403  avg_loss=0.6296
+    Batch 250/403  avg_loss=0.6278
+    Batch 300/403  avg_loss=0.6249
+    Batch 350/403  avg_loss=0.6243
+    Batch 400/403  avg_loss=0.6269
+  Train loss: 0.6269  — starting val evaluation
+  Val proba range: [0.1172, 0.9636]  NaNs: 0
+  Epoch 3/5  train_loss=0.6269  val_loss=0.6557  val_macro_f1=0.6002  val_roc_auc=0.6709  (28.8s)
+    New best val macro_f1=0.6002 — checkpoint saved
+
+  --- Epoch 4/5 ---  [20:27:05]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.6381
+    Batch 50/403  avg_loss=0.5802
+    Batch 100/403  avg_loss=0.5611
+    Batch 150/403  avg_loss=0.5507
+    Batch 200/403  avg_loss=0.5459
+    Batch 250/403  avg_loss=0.5444
+    Batch 300/403  avg_loss=0.5463
+    Batch 350/403  avg_loss=0.5476
+    Batch 400/403  avg_loss=0.5446
+  Train loss: 0.5433  — starting val evaluation
+  Val proba range: [0.0396, 0.9930]  NaNs: 0
+  Epoch 4/5  train_loss=0.5433  val_loss=0.7386  val_macro_f1=0.5793  val_roc_auc=0.6624  (28.9s)
+
+  --- Epoch 5/5 ---  [20:27:33]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.4235
+    Batch 50/403  avg_loss=0.4750
+    Batch 100/403  avg_loss=0.4660
+    Batch 150/403  avg_loss=0.4652
+    Batch 200/403  avg_loss=0.4624
+    Batch 250/403  avg_loss=0.4649
+    Batch 300/403  avg_loss=0.4634
+    Batch 350/403  avg_loss=0.4672
+    Batch 400/403  avg_loss=0.4637
+  Train loss: 0.4631  — starting val evaluation
+  Val proba range: [0.0246, 0.9972]  NaNs: 0
+  Epoch 5/5  train_loss=0.4631  val_loss=0.8224  val_macro_f1=0.5942  val_roc_auc=0.6501  (28.9s)
+
+[SECTION] Loading best checkpoint  [20:28:02]
+
+[SECTION] Threshold tuning on val set  [20:28:03]
+   threshold   macro_f1
+        0.20   0.4590
+        0.21   0.4697
+        0.22   0.4821
+        0.23   0.4989
+        0.24   0.5110
+        0.25   0.5251
+        0.26   0.5403
+        0.27   0.5554
+        0.28   0.5610
+        0.29   0.5690
+        0.30   0.5758
+        0.31   0.5806
+        0.32   0.5886
+        0.33   0.6010
+        0.34   0.6047
+        0.35   0.5989
+        0.36   0.6113  ←
+        0.37   0.6067
+        0.38   0.6061
+        0.39   0.6113
+        0.40   0.5990
+        0.41   0.5952
+        0.42   0.6001
+        0.43   0.6038
+        0.44   0.6094
+        0.45   0.5998
+        0.46   0.6095
+        0.47   0.6078
+        0.48   0.6100
+        0.49   0.6059
+        0.50   0.6002
+        0.51   0.6021
+        0.52   0.5991
+        0.53   0.5926
+        0.54   0.5934
+        0.55   0.5887
+        0.56   0.5714
+        0.57   0.5675
+        0.58   0.5652
+        0.59   0.5558
+        0.60   0.5475
+        0.61   0.5472
+        0.62   0.5397
+        0.63   0.5337
+        0.64   0.5301
+        0.65   0.5280
+        0.66   0.5139
+        0.67   0.5056
+        0.68   0.4980
+        0.69   0.4925
+        0.70   0.4856
+        0.71   0.4760
+        0.72   0.4564
+        0.73   0.4470
+        0.74   0.4393
+        0.75   0.4296
+        0.76   0.4126
+
+  Best threshold: 0.36  (val macro_f1=0.6113)
+
+[SECTION] Holdout evaluation  [20:28:03]
+  Threshold: 0.36
+
+Holdout results:
+  roc_auc: 0.6757
+  pr_auc: 0.7825
+  macro_f1: 0.6126
+  f1: 0.7509
+  precision: 0.7181
+  recall: 0.7869
+  accuracy: 0.6620
+  mcc: 0.2310
+  balanced_acc: 0.6098
+
+              precision    recall  f1-score   support
+
+           0       0.53      0.43      0.47       631
+           1       0.72      0.79      0.75      1159
+
+    accuracy                           0.66      1790
+   macro avg       0.62      0.61      0.61      1790
+weighted avg       0.65      0.66      0.65      1790
+
+**Script config at time of Run 6**
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Model | `microsoft/deberta-v3-small` | 86M params, FP32 |
+| EPOCHS | 5 | — |
+| FREEZE_EPOCHS | 1 | Backbone frozen for epoch 1 |
+| LR | 2e-5 | Phase 2 LLRD base |
+| LLRD_FACTOR | 0.9 | — |
+| WARMUP_RATIO | 0.1 | Phase 2 warmup: 161 steps over 1,612 total |
+| Threshold tuning | On val set | Best threshold: 0.36 |
+
+**Key observations — epoch 3 is the confirmed peak; R5 schedule beats R6 at epoch 3**
+
+| Metric | R4 (+LLRD) | R5 (3ep, freeze) | R6 (5ep, freeze) |
+|--------|------------|-----------------|-----------------|
+| Best epoch | 1 | **3** | **3** |
+| Best val macro_f1 | 0.6145 | 0.6129 | 0.6002 |
+| Tuned val macro_f1 | 0.6145 | 0.6165 | 0.6113 |
+| Holdout macro_f1 | 0.6133 | **0.6203** | 0.6126 |
+| Holdout ROC-AUC | 0.6538 | 0.6679 | **0.6757** |
+
+- **Best checkpoint is epoch 3 in both R5 and R6** — 1 frozen epoch + 2 fine-tuning epochs is the confirmed optimum
+- **R6 epoch 3 is weaker than R5 epoch 3** (val F1: 0.6002 vs 0.6129) despite identical frozen epoch and identical training batches — cause is the LR schedule: R5's phase-2 schedule covers 806 steps (2 epochs) with warmup=80; R6's covers 1,612 steps (4 epochs) with warmup=161. At epoch 3 (step 806), R5 has completed its full decay curve while R6 is still mid-trajectory at ~1.6e-5 — a different and less optimal LR profile for 2 backbone epochs of training
+- **Epoch 4 is the overfitting cliff**: train_loss drops sharply 0.6269 → 0.5433 while val_loss spikes 0.6557 → 0.7386 (+0.083), proba range blows out to [0.04, 0.99]
+- **R6 ROC-AUC 0.6757 > R5 ROC-AUC 0.6679** even though F1 is lower — the epoch 3 checkpoint under the 4-epoch LR schedule ranks examples better but sets a slightly worse decision boundary; threshold tuning compensates less well on the 716-sample val set
+- Root cause of R5 > R6: the phase-2 LR schedule should always be calibrated to the actual number of backbone epochs being trained, not the total EPOCHS count; with FREEZE_EPOCHS=1 and EPOCHS=3, R5 had the correctly sized schedule
+
+**Confirmed best Option A config: EPOCHS=3, FREEZE_EPOCHS=1 (Run 5)**
+
