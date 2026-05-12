@@ -576,9 +576,179 @@ weighted avg       0.65      0.62      0.63      1790
 
 **Next: Run 3** — one-epoch approach: `EPOCHS=1`, `LR=3e-5`, cosine schedule, `label_smoothing=0.1`. Extract max signal from one clean pass; skip overfitting entirely.
 
--------------------------------
+--> Run 3 One epoch approach output
 
+[SECTION] Training  [19:12:58]
+  Model dtype     : torch.float32
+  loss_weights    : tensor([1.4200, 0.7700], device='cuda:0')
+  Train batches   : 403  Val batches: 23
 
-  
+  --- Epoch 1/1 ---  [19:12:58]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.6684
+    Batch 50/403  avg_loss=0.7093
+    Batch 100/403  avg_loss=0.7017
+    Batch 150/403  avg_loss=0.6999
+    Batch 200/403  avg_loss=0.6950
+    Batch 250/403  avg_loss=0.6914
+    Batch 300/403  avg_loss=0.6897
+    Batch 350/403  avg_loss=0.6864
+    Batch 400/403  avg_loss=0.6870
+  Train loss: 0.6872  — starting val evaluation
+  Val proba range: [0.2577, 0.7147]  NaNs: 0
+  Epoch 1/1  train_loss=0.6872  val_loss=0.6716  val_macro_f1=0.5993  val_roc_auc=0.6509  (30.0s)
+    New best val macro_f1=0.5993 — checkpoint saved
+
+[SECTION] Loading best checkpoint  [19:13:29]
+
+[SECTION] Threshold tuning on val set  [19:13:29]
+   threshold   macro_f1
+        0.20   0.3932
+        0.21   0.3932
+        0.22   0.3932
+        0.23   0.3932
+        0.24   0.3932
+        0.25   0.3932
+        0.26   0.3970
+        0.27   0.3959
+        0.28   0.4167
+        0.29   0.4411
+        0.30   0.4725
+        0.31   0.4980
+        0.32   0.5192
+        0.33   0.5544
+        0.34   0.5768
+        0.35   0.5848
+        0.36   0.6020  ←
+        0.37   0.5989
+        0.38   0.5979
+        0.39   0.5939
+        0.40   0.5969
+        0.41   0.5941
+        0.42   0.5928
+        0.43   0.5932
+        0.44   0.5888
+        0.45   0.5921
+        0.46   0.5997
+        0.47   0.5965
+        0.48   0.5966
+        0.49   0.5963
+        0.50   0.5993
+        0.51   0.5905
+        0.52   0.5913
+        0.53   0.5913
+        0.54   0.5909
+        0.55   0.5878
+        0.56   0.5804
+        0.57   0.5730
+        0.58   0.5712
+        0.59   0.5664
+        0.60   0.5599
+        0.61   0.5419
+        0.62   0.5332
+        0.63   0.5227
+        0.64   0.5118
+        0.65   0.4896
+        0.66   0.4590
+        0.67   0.4304
+        0.68   0.3796
+        0.69   0.3264
+        0.70   0.2848
+        0.71   0.2652
+        0.72   0.2603
+        0.73   0.2603
+        0.74   0.2603
+        0.75   0.2603
+        0.76   0.2603
+
+  Best threshold: 0.36  (val macro_f1=0.6020)
+
+[SECTION] Holdout evaluation  [19:13:29]
+  Threshold: 0.36
+
+Holdout results:
+  roc_auc: 0.6416
+  pr_auc: 0.7406
+  macro_f1: 0.5851
+  f1: 0.7631
+  precision: 0.6976
+  recall: 0.8421
+  accuracy: 0.6615
+  mcc: 0.1986
+  balanced_acc: 0.5859
+
+              precision    recall  f1-score   support
+
+           0       0.53      0.33      0.41       631
+           1       0.70      0.84      0.76      1159
+
+    accuracy                           0.66      1790
+   macro avg       0.61      0.59      0.59      1790
+weighted avg       0.64      0.66      0.64      1790
+
+Run 3 was the worst of all three. Let me look at what the numbers are telling us across all runs.
+
+  Metric: Val macro_f1 (thr=0.5)
+  Run 1 (2e-5, 3ep, linear): 0.6122
+  Run 2 (1e-5, 3ep, linear): 0.5993
+  Run 3 (3e-5, 1ep, cosine, ls=0.1): 0.5993
+  ────────────────────────────────────────
+  Metric: Tuned val macro_f1
+  Run 1 (2e-5, 3ep, linear): 0.6227 (thr=0.48)
+  Run 2 (1e-5, 3ep, linear): 0.6193 (thr=0.56)
+  Run 3 (3e-5, 1ep, cosine, ls=0.1): 0.6020 (thr=0.36)
+  ────────────────────────────────────────
+  Metric: Holdout macro_f1
+  Run 1 (2e-5, 3ep, linear): 0.6127
+  Run 2 (1e-5, 3ep, linear): 0.6039
+  Run 3 (3e-5, 1ep, cosine, ls=0.1): 0.5851
+  ────────────────────────────────────────
+  Metric: Holdout ROC-AUC
+  Run 1 (2e-5, 3ep, linear): 0.6552
+  Run 2 (1e-5, 3ep, linear): 0.6508
+  Run 3 (3e-5, 1ep, cosine, ls=0.1): 0.6416
+  ────────────────────────────────────────
+  Metric: Class 0 recall
+  Run 1 (2e-5, 3ep, linear): 0.49
+  Run 2 (1e-5, 3ep, linear): 0.59
+  Run 3 (3e-5, 1ep, cosine, ls=0.1): 0.33
+
+  Three things stand out:
+
+  1. Run 1 at 2e-5 was the best LR — going lower (1e-5) extracted less signal at epoch 1, going higher
+   (3e-5) confused calibration
+  2. Label smoothing + class weights conflicted: they pull in opposite directions on the loss surface,
+   and the model compensated by skewing probabilities low — hence the 0.36 threshold and class 0
+  recall collapsing to 0.33
+  3. Generalization gap is widening (-0.010 Run 1, -0.015 Run 2, -0.017 Run 3) — threshold tuning on
+  the small val set (716 samples) is increasingly overfitting to it
+
+  The first epoch of Run 1 was genuinely the best single-epoch pass (0.6122 vs 0.5993 in Runs 2 and
+  3), and it overfits from epoch 2 only because the backbone updates too aggressively for the full 3
+  epochs. The fix is layer-wise LR decay (LLRD) — the original Option B we discussed — which keeps the
+   backbone stable while allowing the head to keep learning.
+
+  Run 4 — LLRD, 3 epochs, no label smoothing:
+  - Head/classifier: LR=2e-5 (validated sweet spot)
+  - DeBERTa layers: decay by 0.9^n going down → layer 11 gets ~1.8e-5, layer 0 gets ~0.43e-5
+  - EPOCHS=3, save best checkpoint, linear warmup 10%
+  - No label smoothing — remove it
+
+  recall collapsing to 0.33
+  3. Generalization gap is widening (-0.010 Run 1, -0.015 Run 2, -0.017 Run 3) — threshold tuning on
+  the small val set (716 samples) is increasingly overfitting to it
+
+  The first epoch of Run 1 was genuinely the best single-epoch pass (0.6122 vs 0.5993 in Runs 2 and
+  3), and it overfits from epoch 2 only because the backbone updates too aggressively for the full 3
+  epochs. The fix is layer-wise LR decay (LLRD) — the original Option B we discussed — which keeps the
+   backbone stable while allowing the head to keep learning.
+
+--------------------------------------
+Next
+
+  Run 4 — LLRD, 3 epochs, no label smoothing:
+  - Head/classifier: LR=2e-5 (validated sweet spot)
+  - DeBERTa layers: decay by 0.9^n going down → layer 11 gets ~1.8e-5, layer 0 gets ~0.43e-5
+  - EPOCHS=3, save best checkpoint, linear warmup 10%
+  - No label smoothing — remove it
 
   
