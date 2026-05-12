@@ -83,7 +83,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_NAME    = "microsoft/deberta-v3-small"
 MAX_LENGTH    = 128
 BATCH_SIZE    = 16       # safe for 12 GB VRAM; bump to 32 on Kaggle T4 (16 GB)
-EPOCHS        = 3
+EPOCHS        = 5
 FREEZE_EPOCHS = 1        # freeze backbone for this many epochs; 0 to disable
 LR            = 2e-5     # head LR; encoder layers decay by LLRD_FACTOR per layer
 LLRD_FACTOR   = 0.9      # layer-wise LR decay multiplier
@@ -359,10 +359,11 @@ for epoch in range(1, EPOCHS + 1):
     if FREEZE_EPOCHS > 0 and epoch == FREEZE_EPOCHS + 1:
         print(f"\n  [Phase 2] Unfreezing backbone + rebuilding optimizer with LLRD")
         _unfreeze_backbone(model)
-        param_groups = _build_llrd_param_groups(model, LR, LLRD_FACTOR, WEIGHT_DECAY)
-        optimizer    = AdamW(param_groups)
-        scheduler    = get_linear_schedule_with_warmup(optimizer, p2_warmup, p2_steps)
-        print(f"  LLRD groups: {len(param_groups)}  LR range: [{min(g['lr'] for g in param_groups):.2e}, {max(g['lr'] for g in param_groups):.2e}]")
+        param_groups  = _build_llrd_param_groups(model, LR, LLRD_FACTOR, WEIGHT_DECAY)
+        optimizer     = AdamW(param_groups)
+        _lr_min, _lr_max = min(g['lr'] for g in optimizer.param_groups), max(g['lr'] for g in optimizer.param_groups)
+        scheduler     = get_linear_schedule_with_warmup(optimizer, p2_warmup, p2_steps)
+        print(f"  LLRD groups: {len(param_groups)}  LR range: [{_lr_min:.2e}, {_lr_max:.2e}]")
 
     print(f"\n  --- Epoch {epoch}/{EPOCHS} ---  [{_now()}]")
     train_loss = train_epoch(model, train_loader, optimizer, scheduler, criterion)
