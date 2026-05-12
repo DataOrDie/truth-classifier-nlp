@@ -685,70 +685,36 @@ Holdout results:
    macro avg       0.61      0.59      0.59      1790
 weighted avg       0.64      0.66      0.64      1790
 
-Run 3 was the worst of all three. Let me look at what the numbers are telling us across all runs.
+**Script config at time of Run 3**
 
-  Metric: Val macro_f1 (thr=0.5)
-  Run 1 (2e-5, 3ep, linear): 0.6122
-  Run 2 (1e-5, 3ep, linear): 0.5993
-  Run 3 (3e-5, 1ep, cosine, ls=0.1): 0.5993
-  ────────────────────────────────────────
-  Metric: Tuned val macro_f1
-  Run 1 (2e-5, 3ep, linear): 0.6227 (thr=0.48)
-  Run 2 (1e-5, 3ep, linear): 0.6193 (thr=0.56)
-  Run 3 (3e-5, 1ep, cosine, ls=0.1): 0.6020 (thr=0.36)
-  ────────────────────────────────────────
-  Metric: Holdout macro_f1
-  Run 1 (2e-5, 3ep, linear): 0.6127
-  Run 2 (1e-5, 3ep, linear): 0.6039
-  Run 3 (3e-5, 1ep, cosine, ls=0.1): 0.5851
-  ────────────────────────────────────────
-  Metric: Holdout ROC-AUC
-  Run 1 (2e-5, 3ep, linear): 0.6552
-  Run 2 (1e-5, 3ep, linear): 0.6508
-  Run 3 (3e-5, 1ep, cosine, ls=0.1): 0.6416
-  ────────────────────────────────────────
-  Metric: Class 0 recall
-  Run 1 (2e-5, 3ep, linear): 0.49
-  Run 2 (1e-5, 3ep, linear): 0.59
-  Run 3 (3e-5, 1ep, cosine, ls=0.1): 0.33
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| EPOCHS | 1 | One-epoch approach |
+| LR | 3e-5 | Higher than Run 1 |
+| WARMUP_RATIO | 0.1 | — |
+| LABEL_SMOOTHING | 0.1 | New — turned out to conflict with class weights |
+| Scheduler | Cosine | New |
+| Threshold tuning | On val set | Best threshold: 0.36 |
 
-  Three things stand out:
+**Key observations — Run 3 was the worst of all three**
 
-  1. Run 1 at 2e-5 was the best LR — going lower (1e-5) extracted less signal at epoch 1, going higher
-   (3e-5) confused calibration
-  2. Label smoothing + class weights conflicted: they pull in opposite directions on the loss surface,
-   and the model compensated by skewing probabilities low — hence the 0.36 threshold and class 0
-  recall collapsing to 0.33
-  3. Generalization gap is widening (-0.010 Run 1, -0.015 Run 2, -0.017 Run 3) — threshold tuning on
-  the small val set (716 samples) is increasingly overfitting to it
+| Metric | Run 1 (2e-5, 3ep) | Run 2 (1e-5, 3ep) | Run 3 (3e-5, 1ep, cosine, ls) |
+|--------|-------------------|-------------------|-------------------------------|
+| Val macro_f1 (thr=0.5) | **0.6122** | 0.5993 | 0.5993 |
+| Tuned val macro_f1 | **0.6227** (thr=0.48) | 0.6193 (thr=0.56) | 0.6020 (thr=0.36) |
+| Holdout macro_f1 | **0.6127** | 0.6039 | 0.5851 |
+| Holdout ROC-AUC | **0.6552** | 0.6508 | 0.6416 |
+| Class 0 recall | 0.49 | 0.59 | 0.33 |
 
-  The first epoch of Run 1 was genuinely the best single-epoch pass (0.6122 vs 0.5993 in Runs 2 and
-  3), and it overfits from epoch 2 only because the backbone updates too aggressively for the full 3
-  epochs. The fix is layer-wise LR decay (LLRD) — the original Option B we discussed — which keeps the
-   backbone stable while allowing the head to keep learning.
+- **Label smoothing + class weights conflicted**: opposing forces on the loss surface; model compensated by skewing probabilities low → threshold dropped to 0.36, class 0 recall collapsed to 0.33
+- **Generalization gap widening**: −0.010 Run 1, −0.015 Run 2, −0.017 Run 3 — threshold tuning overfitting to the small 716-sample val set
+- **2e-5 was the validated sweet spot**: Run 1 epoch 1 (0.6122) was clearly better than both 1e-5 and 3e-5
+- **Root cause**: the backbone updates too aggressively at any uniform LR for 3 epochs; LR/schedule tuning alone can't fix this
 
-  Run 4 — LLRD, 3 epochs, no label smoothing:
-  - Head/classifier: LR=2e-5 (validated sweet spot)
-  - DeBERTa layers: decay by 0.9^n going down → layer 11 gets ~1.8e-5, layer 0 gets ~0.43e-5
-  - EPOCHS=3, save best checkpoint, linear warmup 10%
-  - No label smoothing — remove it
+**Next: Run 4** — Layer-wise LR decay (LLRD): head gets `LR=2e-5`, each encoder layer multiplied by `0.9` going down (layer 11 ≈ 1.8e-5, layer 0 ≈ 0.43e-5, embeddings ≈ 0.39e-5). No label smoothing. Linear warmup. `EPOCHS=3`.
 
-  recall collapsing to 0.33
-  3. Generalization gap is widening (-0.010 Run 1, -0.015 Run 2, -0.017 Run 3) — threshold tuning on
-  the small val set (716 samples) is increasingly overfitting to it
-
-  The first epoch of Run 1 was genuinely the best single-epoch pass (0.6122 vs 0.5993 in Runs 2 and
-  3), and it overfits from epoch 2 only because the backbone updates too aggressively for the full 3
-  epochs. The fix is layer-wise LR decay (LLRD) — the original Option B we discussed — which keeps the
-   backbone stable while allowing the head to keep learning.
 
 --------------------------------------
-Next
 
-  Run 4 — LLRD, 3 epochs, no label smoothing:
-  - Head/classifier: LR=2e-5 (validated sweet spot)
-  - DeBERTa layers: decay by 0.9^n going down → layer 11 gets ~1.8e-5, layer 0 gets ~0.43e-5
-  - EPOCHS=3, save best checkpoint, linear warmup 10%
-  - No label smoothing — remove it
 
   

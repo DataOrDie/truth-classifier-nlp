@@ -5,9 +5,9 @@ Architecture
 ------------
 [statement tokens] → DeBERTa-v3-small encoder → [CLS] → dropout → Linear(768 → 2)
 
-Loss       : CrossEntropyLoss with class weights {0: 1.42, 1: 0.77} + label_smoothing=0.1
-Optimizer  : AdamW lr=3e-5, cosine warmup 10% of steps
-Epochs     : 1  (one-epoch approach: avoids overfitting on small dataset)
+Loss       : CrossEntropyLoss with class weights {0: 1.42, 1: 0.77}
+Optimizer  : AdamW with layer-wise LR decay (LLRD): head=2e-5, each encoder layer ×0.9 deeper
+Epochs     : 3  (best checkpoint saved by val macro_f1)
 Max tokens : 128  (covers 99%+ of statements; halves VRAM vs. 512)
 Precision  : FP32  (DeBERTa-v3 unstable in BF16)
 
@@ -51,7 +51,7 @@ from torch.utils.data import DataLoader, Dataset
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
-    get_cosine_schedule_with_warmup,
+    get_linear_schedule_with_warmup,
 )
 
 
@@ -80,14 +80,14 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # ============================================================
 # Config
 # ============================================================
-MODEL_NAME      = "microsoft/deberta-v3-small"
-MAX_LENGTH      = 128
-BATCH_SIZE      = 16       # safe for 12 GB VRAM; bump to 32 on Kaggle T4 (16 GB)
-EPOCHS          = 1
-LR              = 3e-5
-WARMUP_RATIO    = 0.1
-WEIGHT_DECAY    = 0.01
-LABEL_SMOOTHING = 0.1
+MODEL_NAME   = "microsoft/deberta-v3-small"
+MAX_LENGTH   = 128
+BATCH_SIZE   = 16       # safe for 12 GB VRAM; bump to 32 on Kaggle T4 (16 GB)
+EPOCHS       = 3
+LR           = 2e-5     # head LR; encoder layers decay by LLRD_FACTOR per layer
+LLRD_FACTOR  = 0.9      # layer-wise LR decay multiplier
+WARMUP_RATIO = 0.1
+WEIGHT_DECAY = 0.01
 
 CLASS_WEIGHTS = [1.42, 0.77]   # {0: true, 1: false} — same as all other scripts
 THRESHOLD     = 0.5
@@ -127,6 +127,17 @@ def _now() -> str:
 print(f"\n[SECTION] Loading data  [{_now()}]")
 df = pd.read_csv(DATA_DIR / "train.csv")
 print(f"  Rows: {len(df):,}  |  Labels: {df['label'].value_counts().to_dict()}")
+
+print(f"\n[SECTION] Dataset features")
+meta_cols = [c for c in df.columns if c not in ("id", "label", "statement")]
+print(f"  Used       : ['statement']  (raw text, tokenized)")
+print(f"  Not used   : {meta_cols}")
+tok_len = df["statement"].str.split().str.len()
+print(f"  Token len  : min={tok_len.min()}  median={tok_len.median():.0f}  p99={tok_len.quantile(0.99):.0f}  max={tok_len.max()}")
+for col in meta_cols:
+    n_unique = df[col].nunique()
+    top3 = df[col].value_counts().head(3).index.tolist()
+    print(f"  {col:<22}: {n_unique:>4} unique  top-3={top3}")
 
 texts  = df["statement"].tolist()
 labels = df["label"].tolist()
@@ -178,6 +189,42 @@ holdout_loader = DataLoader(holdout_ds, batch_size=BATCH_SIZE*2, shuffle=False,
 
 
 # ============================================================
+# LLRD optimizer builder
+# ============================================================
+def _build_llrd_param_groups(model, base_lr: float, llrd_factor: float, weight_decay: float) -> list:
+    """Layer-wise LR decay: head gets base_lr, each encoder layer is multiplied by llrd_factor going down."""
+    no_decay   = {"bias", "LayerNorm.weight", "layer_norm.weight"}
+    num_layers = len(model.deberta.encoder.layer)
+    param_dict = dict(model.named_parameters())
+    assigned   = set()
+    groups     = []
+
+    def _add(names: list[str], lr: float) -> None:
+        wd = [param_dict[n] for n in names if not any(nd in n for nd in no_decay)]
+        nd = [param_dict[n] for n in names if     any(nd in n for nd in no_decay)]
+        if wd: groups.append({"params": wd, "lr": lr, "weight_decay": weight_decay})
+        if nd: groups.append({"params": nd, "lr": lr, "weight_decay": 0.0})
+        assigned.update(names)
+
+    # Head (classifier + pooler) — full LR
+    head = [n for n in param_dict
+            if "deberta.encoder.layer." not in n and "deberta.embeddings." not in n]
+    _add(head, base_lr)
+
+    # Encoder layers: top (layer 11) → bottom (layer 0), depth=1 at top
+    for layer_idx in range(num_layers - 1, -1, -1):
+        depth = num_layers - layer_idx                  # 1 for top layer, num_layers for bottom
+        lr    = base_lr * (llrd_factor ** depth)
+        _add([n for n in param_dict if f"deberta.encoder.layer.{layer_idx}." in n], lr)
+
+    # Embeddings — lowest LR
+    embed_lr = base_lr * (llrd_factor ** (num_layers + 1))
+    _add([n for n in param_dict if "deberta.embeddings." in n and n not in assigned], embed_lr)
+
+    return groups
+
+
+# ============================================================
 # Model
 # ============================================================
 print(f"\n[SECTION] Loading model: {MODEL_NAME}  [{_now()}]")
@@ -187,13 +234,15 @@ n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"  Parameters: {n_params:,}")
 
 loss_weights = torch.tensor(CLASS_WEIGHTS, dtype=torch.float32).to(device)
-criterion    = nn.CrossEntropyLoss(weight=loss_weights, label_smoothing=LABEL_SMOOTHING)
+criterion    = nn.CrossEntropyLoss(weight=loss_weights)
 
-optimizer    = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+param_groups = _build_llrd_param_groups(model, LR, LLRD_FACTOR, WEIGHT_DECAY)
+optimizer    = AdamW(param_groups)
+print(f"  LLRD groups: {len(param_groups)}  LR range: [{min(g['lr'] for g in param_groups):.2e}, {max(g['lr'] for g in param_groups):.2e}]")
+
 total_steps  = len(train_loader) * EPOCHS
 warmup_steps = int(total_steps * WARMUP_RATIO)
-scheduler    = get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_steps)
-# BF16 doesn't need a GradScaler (wider dynamic range than FP16)
+scheduler    = get_linear_schedule_with_warmup(optimizer, warmup_steps, total_steps)
 
 
 # ============================================================
@@ -209,11 +258,11 @@ run = wandb.init(
         "batch_size":    BATCH_SIZE,
         "epochs":        EPOCHS,
         "lr":            LR,
-        "warmup_ratio":      WARMUP_RATIO,
-        "weight_decay":      WEIGHT_DECAY,
-        "label_smoothing":   LABEL_SMOOTHING,
-        "class_weights":     CLASS_WEIGHTS,
-        "scheduler":         "cosine",
+        "warmup_ratio":  WARMUP_RATIO,
+        "weight_decay":  WEIGHT_DECAY,
+        "llrd_factor":   LLRD_FACTOR,
+        "class_weights": CLASS_WEIGHTS,
+        "scheduler":     "linear",
         "seed":          SEED,
         "n_train":       len(X_tr),
         "n_val":         len(X_val),
