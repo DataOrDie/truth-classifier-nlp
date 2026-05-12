@@ -1010,8 +1010,7 @@ Likely highest-leverage next moves (in order):
   Experiment: C
   Change: Try soft voting (simple average of 4 base probas) instead of meta-LR
   Rationale: Meta-LR on 4 inputs with N=7,160 samples is low-data; if base models are well-calibrated, simple average
-  can
-    beat it
+  can beat it
   ────────────────────────────────────────
   Experiment: D
   Change: Replace base LR (ROC-AUC 0.6582, lowest by ~0.02) with XGBoost
@@ -1156,3 +1155,187 @@ weighted avg       0.65      0.65      0.65      1790
   Experiment: B
   Change: Raise CatBoost depth 4 → 6
   Rationale: At depth=4 with 300 iterations, CAT may be underfitting; LGBM with num_leaves=63 is effectively deeper
+
+
+--> Experiment B Output
+[SECTION] Cross-validation summary  [total CV: 244.9s]
+  roc_auc_avg: 0.6732 ± 0.0095
+  macro_f1_avg: 0.6103 ± 0.0061
+  roc_auc_lr: 0.6326 ± 0.0082
+  roc_auc_rfc: 0.6721 ± 0.0079
+  roc_auc_lgbm: 0.6676 ± 0.0115
+  roc_auc_cat: 0.6675 ± 0.0111
+
+[SECTION] Training meta-LR on stacked OOF  [21:38:08]
+  Meta-LR coefficients: {'lr': 0.47605787562227364, 'rfc': 1.1827393712392786, 'lgbm': 0.9649215462401294, 'cat': 1.0863792664922416}
+
+[SECTION] Threshold tuning on stacked OOF  [21:38:08]
+   threshold   macro_f1
+        0.20   0.3930
+        0.21   0.3930
+        0.22   0.3930
+        0.23   0.3930
+        0.24   0.3930
+        0.25   0.3930
+        0.26   0.3930
+        0.27   0.3947
+        0.28   0.3951
+        0.29   0.3954
+        0.30   0.3975
+        0.31   0.4011
+        0.32   0.4049
+        0.33   0.4079
+        0.34   0.4133
+        0.35   0.4221
+        0.36   0.4289
+        0.37   0.4385
+        0.38   0.4467
+        0.39   0.4533
+        0.40   0.4642
+        0.41   0.4760
+        0.42   0.4854
+        0.43   0.4982
+        0.44   0.5087
+        0.45   0.5178
+        0.46   0.5262
+        0.47   0.5349
+        0.48   0.5436
+        0.49   0.5552
+        0.50   0.5652
+        0.51   0.5738
+        0.52   0.5831
+        0.53   0.5911
+        0.54   0.5945
+        0.55   0.6007
+        0.56   0.6073
+        0.57   0.6105
+        0.58   0.6160
+        0.59   0.6201
+        0.60   0.6222
+        0.61   0.6225  ←
+        0.62   0.6207
+        0.63   0.6222
+        0.64   0.6195
+        0.65   0.6151
+        0.66   0.6112
+        0.67   0.6069
+        0.68   0.6031
+        0.69   0.5972
+        0.70   0.5893
+        0.71   0.5793
+        0.72   0.5711
+        0.73   0.5582
+        0.74   0.5418
+        0.75   0.5198
+        0.76   0.5012
+
+  Best threshold: 0.61  (OOF macro_f1=0.6225)
+  THRESHOLD updated: 0.50 → 0.61
+[SECTION] Fitting final base models on full train/val set  [21:38:10]
+  Done in 60.1s
+[SECTION] Evaluating on holdout set  [21:39:10]
+  Using threshold: 0.61
+
+Holdout results:
+  roc_auc: 0.7010
+  pr_auc: 0.8042
+  macro_f1: 0.6390
+  f1: 0.7324
+  precision: 0.7541
+  recall: 0.7118
+  accuracy: 0.6631
+  mcc: 0.2798
+  balanced_acc: 0.6428
+
+              precision    recall  f1-score   support
+
+           0       0.52      0.57      0.55       631
+           1       0.75      0.71      0.73      1159
+
+    accuracy                           0.66      1790
+   macro avg       0.64      0.64      0.64      1790
+weighted avg       0.67      0.66      0.67      1790
+
+  Base model holdout ROC-AUC:
+    LR  : 0.6720
+    RFC : 0.6926
+    LGBM: 0.6850
+    CAT : 0.6922
+
+Mixed result — CAT itself improved significantly, but the ensemble F1 slipped. Let me break it down properly.
+
+  Experiment B vs baseline:
+
+  ┌──────────────────┬────────────────────┬─────────────────┬─────────┐
+  │      Metric      │ Baseline (depth=4) │ Exp B (depth=6) │  Delta  │
+  ├──────────────────┼────────────────────┼─────────────────┼─────────┤
+  │ Holdout macro_f1 │ 0.6428             │ 0.6390          │ −0.0038 │
+  ├──────────────────┼────────────────────┼─────────────────┼─────────┤
+  │ Holdout ROC-AUC  │ 0.6995             │ 0.7010          │ +0.0015 │
+  ├──────────────────┼────────────────────┼─────────────────┼─────────┤
+  │ OOF macro_f1     │ 0.6228             │ 0.6225          │ −0.0003 │
+  ├──────────────────┼────────────────────┼─────────────────┼─────────┤
+  │ CV roc_auc_avg   │ 0.6724             │ 0.6732          │ +0.0008 │
+  ├──────────────────┼────────────────────┼─────────────────┼─────────┤
+  │ CAT holdout AUC  │ 0.6848             │ 0.6922          │ +0.0074 │
+  ├──────────────────┼────────────────────┼─────────────────┼─────────┤
+  │ CAT meta weight  │ 0.961              │ 1.086           │ +0.125  │
+  ├──────────────────┼────────────────────┼─────────────────┼─────────┤
+  │ RFC meta weight  │ 1.238              │ 1.183           │ −0.055  │
+  └──────────────────┴────────────────────┴─────────────────┴─────────┘
+
+  CAT at depth=6 is genuinely stronger individually (0.6848 → 0.6922, nearly matching RFC's 0.6926). But it gained that
+   by absorbing signal from RFC and LGBM — their weights both dropped, reducing diversity. AUC improved marginally; F1
+  slipped. The OOF scores are essentially tied (0.6228 vs 0.6225), so the holdout −0.0038 may be noise, but the primary
+   metric still went the wrong way.
+
+  Call: revert to depth=4. The primary metric regressed, RFC's dominance (the strongest base model) was partially
+  displaced, and the AUC gain (+0.0015) doesn't compensate. Reverting keeps the clean baseline for experiment D.
+
+**Script config at time of Experiment B**
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Base models | LR + RFC + LGBM + CatBoost → meta-LR | — |
+| Embeddings | `all-mpnet-base-v2` (768-dim) | — |
+| drop_speaker_true_rate | True | Restored after Exp A |
+| CAT depth | **6** | Changed from 4 |
+| CAT iterations | 300 | Unchanged |
+| All other HPs | Unchanged | — |
+
+**Key observations — CAT improved individually; ensemble F1 regressed**
+
+| Metric | Baseline (depth=4) | Exp B (depth=6) | Delta |
+|--------|-------------------|-----------------|-------|
+| Holdout macro_f1 | **0.6428** | 0.6390 | −0.0038 |
+| Holdout ROC-AUC | 0.6995 | **0.7010** | +0.0015 |
+| OOF macro_f1 | **0.6228** | 0.6225 | −0.0003 |
+| CV roc_auc_avg | 0.6724 | **0.6732** | +0.0008 |
+| CAT holdout AUC | 0.6848 | **0.6922** | +0.0074 |
+| RFC meta weight | **1.238** | 1.183 | −0.055 |
+| CAT meta weight | 0.961 | **1.086** | +0.125 |
+
+- CAT at depth=6 is a stronger individual model (0.6848 → 0.6922, nearly matching RFC's 0.6926) — the capacity increase worked for the base model
+- But the stronger CAT absorbed signal from RFC and LGBM — both weights dropped, reducing diversity — the meta-LR has less orthogonal signal to combine
+- OOF F1 essentially tied (0.6225 vs 0.6228) — the holdout −0.0038 regression may be partly noise, but the primary metric still went the wrong direction
+- ROC-AUC marginal improvement (+0.0015) doesn't compensate for the F1 regression on the primary competition metric
+- The diversity trade-off is clear: a more capable CAT helps individual ranking but hurts the ensemble's combined decision boundary
+- **Reverted to depth=4**
+
+**Next: Experiment D — Replace base LR (AUC 0.6720) with XGBoost**
+
+**Changes from baseline:**
+- Remove `LogisticRegression` as base model 1 (holdout AUC 0.6720, lowest by ~0.020, meta-weight 0.499 — already half-weighted by meta-LR)
+- Add `XGBClassifier` as base model 1: `n_estimators=500, learning_rate=0.03, max_depth=6, subsample=0.8, colsample_bytree=0.8, reg_alpha=0.1, reg_lambda=1.0`
+- Class imbalance handled via `sample_weight` at fit time (equivalent to `class_weight={0:1.42, 1:0.77}`)
+- No StandardScaler needed — XGBoost is scale-invariant
+- All other config unchanged: depth=4 CAT, drop_speaker_true_rate=True
+
+**Decision rationale:** LR contributes diversity as a linear model but its AUC (0.6720) lags the tree models by ~0.020. The meta-LR already recognises this by halving its weight (0.499 vs ~1.0 for others). XGBoost at max_depth=6 should comfortably outperform LR in AUC while remaining structurally different enough from LGBM (different boosting algorithm, L1+L2 regularisation, border-based splits) to preserve some diversity. The risk is that XGB and LGBM are too similar — watch for a collapse in one model's meta weight.
+
+**Expected behavior:**
+- XGB holdout AUC should reach 0.68+ (LR was 0.6720) — if it doesn't clearly beat LR, the swap isn't justified
+- XGB meta weight should land near LGBM/CAT range (~0.9–1.1); if it collapses to 0.5 like LR, diversity is still lacking
+- Ensemble holdout macro_f1 target: >0.6428 — if XGB adds real complementary signal on top of RFC, this is achievable
+- Warning sign: if LGBM and XGB weights both drop while RFC's weight spikes, XGB and LGBM are correlated and the ensemble is now RFC-dominated
+

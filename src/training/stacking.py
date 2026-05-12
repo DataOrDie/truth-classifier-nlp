@@ -28,6 +28,7 @@ from catboost import CatBoostClassifier
 from lightgbm import LGBMClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
+from xgboost import XGBClassifier
 from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
@@ -521,8 +522,13 @@ enable_true_rate_features = True
 true_rate_fallback = 0.5
 
 # Base model HPs — best known from prior experiments, no inner search
-BASE_LR_HP = dict(C=1.0, penalty="l2", max_iter=1000, solver="lbfgs",
-                  class_weight=CLASS_WEIGHT_D, random_state=42)
+# Experiment D: replace base LR (AUC 0.6720, weakest) with XGBoost
+BASE_XGB_HP = dict(n_estimators=500, learning_rate=0.03, max_depth=6,
+                   subsample=0.8, colsample_bytree=0.8,
+                   reg_alpha=0.1, reg_lambda=1.0,
+                   eval_metric="logloss", random_state=42, n_jobs=-1, verbosity=0)
+# XGBoost has no class_weight param; apply via sample_weight at fit time
+_XGB_SW = {0: CLASS_WEIGHT_D[0], 1: CLASS_WEIGHT_D[1]}
 
 BASE_RFC_HP = dict(n_estimators=500, max_features=0.3, min_samples_leaf=2,
                    class_weight=CLASS_WEIGHT_D, n_jobs=-1, random_state=42)
@@ -532,7 +538,7 @@ BASE_LGBM_HP = dict(n_estimators=500, learning_rate=0.03, num_leaves=63,
                     reg_alpha=0.0, reg_lambda=0.0,
                     class_weight=CLASS_WEIGHT_D, n_jobs=-1, random_state=42, verbose=-1)
 
-BASE_CAT_HP = dict(iterations=300, learning_rate=0.03, depth=6, l2_leaf_reg=5,  # Exp B: depth 4→6
+BASE_CAT_HP = dict(iterations=300, learning_rate=0.03, depth=4, l2_leaf_reg=5,
                    border_count=32, bagging_temperature=0.0,
                    class_weights=CLASS_WEIGHTS, thread_count=-1, random_seed=42, verbose=0)
 
@@ -540,7 +546,7 @@ BASE_CAT_HP = dict(iterations=300, learning_rate=0.03, depth=6, l2_leaf_reg=5,  
 # No class_weight — the base probas already encode the imbalance signal.
 META_LR_HP = dict(C=0.1, penalty="l2", max_iter=1000, solver="lbfgs", random_state=42)
 
-BASE_NAMES = ["lr", "rfc", "lgbm", "cat"]
+BASE_NAMES = ["xgb", "rfc", "lgbm", "cat"]
 
 
 # -----------------------------------------------------------------------------
@@ -600,7 +606,8 @@ run = wandb.init(
         "n_features_total":         int(X.shape[1]),
         "vectorizer_type":          statement_vectorizer_type,
         "embedding_model":          statement_embedding_model,
-        "base_lr_C":                BASE_LR_HP["C"],
+        "base_xgb_n_estimators":    BASE_XGB_HP["n_estimators"],
+        "base_xgb_max_depth":       BASE_XGB_HP["max_depth"],
         "base_rfc_n_estimators":    BASE_RFC_HP["n_estimators"],
         "base_lgbm_n_estimators":   BASE_LGBM_HP["n_estimators"],
         "base_lgbm_lr":             BASE_LGBM_HP["learning_rate"],
@@ -618,7 +625,7 @@ print(f"[SECTION] Running cross-validation  [{_now()}]")
 _cv_start = time()
 
 # OOF arrays — one per base model, length = N_trainval
-oof_lr   = np.zeros(len(X_trainval))
+oof_xgb  = np.zeros(len(X_trainval))
 oof_rfc  = np.zeros(len(X_trainval))
 oof_lgbm = np.zeros(len(X_trainval))
 oof_cat  = np.zeros(len(X_trainval))
@@ -643,13 +650,11 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
             X_fold_train[_feat] = _grp_tr[_src_col].map(_rate_map).fillna(true_rate_fallback).values
             X_fold_val[_feat]   = _grp_vl[_src_col].map(_rate_map).fillna(true_rate_fallback).values
 
-    # ---- LR base model (needs StandardScaler) ----
-    _scaler = StandardScaler()
-    _X_tr_scaled = _scaler.fit_transform(X_fold_train)
-    _X_vl_scaled = _scaler.transform(X_fold_val)
-    _m_lr = LogisticRegression(**BASE_LR_HP)
-    _m_lr.fit(_X_tr_scaled, y_fold_train)
-    oof_lr[val_idx] = _m_lr.predict_proba(_X_vl_scaled)[:, 1]
+    # ---- XGBoost base model (Experiment D: replaces base LR) ----
+    _xgb_sw = np.where(y_fold_train == 0, _XGB_SW[0], _XGB_SW[1])
+    _m_xgb = XGBClassifier(**BASE_XGB_HP)
+    _m_xgb.fit(X_fold_train, y_fold_train, sample_weight=_xgb_sw)
+    oof_xgb[val_idx] = _m_xgb.predict_proba(X_fold_val)[:, 1]
 
     # ---- RFC base model ----
     _m_rfc = RandomForestClassifier(**BASE_RFC_HP)
@@ -673,19 +678,19 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
     oof_true[val_idx] = y_fold_val.values
 
     # ---- Per-fold stacked OOF metrics (using default threshold 0.5) ----
-    _meta_X_fold = np.column_stack([oof_lr[val_idx], oof_rfc[val_idx],
+    _meta_X_fold = np.column_stack([oof_xgb[val_idx], oof_rfc[val_idx],
                                     oof_lgbm[val_idx], oof_cat[val_idx]])
     _meta_avg   = _meta_X_fold.mean(axis=1)  # simple average as a proxy before meta-LR is trained
     _preds_avg  = (_meta_avg >= 0.5).astype(int)
 
     fold_metrics = {
-        "fold":         fold_idx,
-        "roc_auc_avg":  roc_auc_score(y_fold_val, _meta_avg),
-        "macro_f1_avg": f1_score(y_fold_val, _preds_avg, average="macro", zero_division=0),
-        "roc_auc_lr":   roc_auc_score(y_fold_val, oof_lr[val_idx]),
-        "roc_auc_rfc":  roc_auc_score(y_fold_val, oof_rfc[val_idx]),
-        "roc_auc_lgbm": roc_auc_score(y_fold_val, oof_lgbm[val_idx]),
-        "roc_auc_cat":  roc_auc_score(y_fold_val, oof_cat[val_idx]),
+        "fold":          fold_idx,
+        "roc_auc_avg":   roc_auc_score(y_fold_val, _meta_avg),
+        "macro_f1_avg":  f1_score(y_fold_val, _preds_avg, average="macro", zero_division=0),
+        "roc_auc_xgb":   roc_auc_score(y_fold_val, oof_xgb[val_idx]),
+        "roc_auc_rfc":   roc_auc_score(y_fold_val, oof_rfc[val_idx]),
+        "roc_auc_lgbm":  roc_auc_score(y_fold_val, oof_lgbm[val_idx]),
+        "roc_auc_cat":   roc_auc_score(y_fold_val, oof_cat[val_idx]),
     }
     cv_fold_metrics.append(fold_metrics)
 
@@ -693,24 +698,24 @@ for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X_trainval, y_trainval
         f"  Fold {fold_idx} | "
         f"avg-ROC={fold_metrics['roc_auc_avg']:.4f}  "
         f"avg-F1={fold_metrics['macro_f1_avg']:.4f}  "
-        f"LR={fold_metrics['roc_auc_lr']:.4f}  "
+        f"XGB={fold_metrics['roc_auc_xgb']:.4f}  "
         f"RFC={fold_metrics['roc_auc_rfc']:.4f}  "
         f"LGBM={fold_metrics['roc_auc_lgbm']:.4f}  "
         f"CAT={fold_metrics['roc_auc_cat']:.4f}  "
         f"({time()-_fold_t:.1f}s)"
     )
     wandb.log({
-        "cv/fold":          fold_idx,
-        "cv/roc_auc_avg":   fold_metrics["roc_auc_avg"],
-        "cv/macro_f1_avg":  fold_metrics["macro_f1_avg"],
-        "cv/roc_auc_lr":    fold_metrics["roc_auc_lr"],
-        "cv/roc_auc_rfc":   fold_metrics["roc_auc_rfc"],
-        "cv/roc_auc_lgbm":  fold_metrics["roc_auc_lgbm"],
-        "cv/roc_auc_cat":   fold_metrics["roc_auc_cat"],
+        "cv/fold":           fold_idx,
+        "cv/roc_auc_avg":    fold_metrics["roc_auc_avg"],
+        "cv/macro_f1_avg":   fold_metrics["macro_f1_avg"],
+        "cv/roc_auc_xgb":    fold_metrics["roc_auc_xgb"],
+        "cv/roc_auc_rfc":    fold_metrics["roc_auc_rfc"],
+        "cv/roc_auc_lgbm":   fold_metrics["roc_auc_lgbm"],
+        "cv/roc_auc_cat":    fold_metrics["roc_auc_cat"],
     })
 
 print(f"\n[SECTION] Cross-validation summary  [total CV: {time()-_cv_start:.1f}s]")
-for k in ["roc_auc_avg", "macro_f1_avg", "roc_auc_lr", "roc_auc_rfc", "roc_auc_lgbm", "roc_auc_cat"]:
+for k in ["roc_auc_avg", "macro_f1_avg", "roc_auc_xgb", "roc_auc_rfc", "roc_auc_lgbm", "roc_auc_cat"]:
     vals = [m[k] for m in cv_fold_metrics]
     print(f"  {k}: {np.mean(vals):.4f} ± {np.std(vals):.4f}")
 
@@ -719,13 +724,13 @@ for k in ["roc_auc_avg", "macro_f1_avg", "roc_auc_lr", "roc_auc_rfc", "roc_auc_l
 # Train meta-LR on full stacked OOF
 # -----------------------------------------------------------------------------
 print(f"\n[SECTION] Training meta-LR on stacked OOF  [{_now()}]")
-meta_X_train = np.column_stack([oof_lr, oof_rfc, oof_lgbm, oof_cat])
+meta_X_train = np.column_stack([oof_xgb, oof_rfc, oof_lgbm, oof_cat])
 meta_lr = LogisticRegression(**META_LR_HP)
 meta_lr.fit(meta_X_train, y_trainval)
 
 meta_coefs = dict(zip(BASE_NAMES, meta_lr.coef_[0].tolist()))
 print(f"  Meta-LR coefficients: {meta_coefs}")
-wandb.log({"meta/coef_lr":   meta_coefs["lr"],
+wandb.log({"meta/coef_xgb":  meta_coefs["xgb"],
            "meta/coef_rfc":  meta_coefs["rfc"],
            "meta/coef_lgbm": meta_coefs["lgbm"],
            "meta/coef_cat":  meta_coefs["cat"]})
@@ -791,12 +796,10 @@ if enable_true_rate_features and _tr_group_cols:
         X_holdout_final[_feat]  = _grp_holdout[_src_col].map(_rate_map).fillna(true_rate_fallback).values
         _final_rate_maps[_feat] = _rate_map.to_dict()
 
-# LR — fit scaler on full trainval
-final_scaler = StandardScaler()
-_X_final_scaled   = final_scaler.fit_transform(X_trainval_final)
-_X_holdout_scaled = final_scaler.transform(X_holdout_final)
-final_lr  = LogisticRegression(**BASE_LR_HP)
-final_lr.fit(_X_final_scaled, y_trainval)
+# XGBoost (Experiment D: replaces base LR)
+_xgb_sw_final = np.where(np.array(y_trainval) == 0, _XGB_SW[0], _XGB_SW[1])
+final_xgb = XGBClassifier(**BASE_XGB_HP)
+final_xgb.fit(X_trainval_final, y_trainval, sample_weight=_xgb_sw_final)
 
 # RFC
 final_rfc = RandomForestClassifier(**BASE_RFC_HP)
@@ -821,12 +824,12 @@ print(f"  Done in {time()-_t0:.1f}s")
 print(f"[SECTION] Evaluating on holdout set  [{_now()}]")
 print(f"  Using threshold: {THRESHOLD:.2f}")
 
-h_lr   = final_lr.predict_proba(_X_holdout_scaled)[:, 1]
+h_xgb  = final_xgb.predict_proba(X_holdout_final)[:, 1]
 h_rfc  = final_rfc.predict_proba(X_holdout_final)[:, 1]
 h_lgbm = final_lgbm.predict_proba(X_holdout_final)[:, 1]
 h_cat  = final_cat.predict_proba(X_holdout_final)[:, 1]
 
-meta_X_holdout = np.column_stack([h_lr, h_rfc, h_lgbm, h_cat])
+meta_X_holdout = np.column_stack([h_xgb, h_rfc, h_lgbm, h_cat])
 y_proba = meta_lr.predict_proba(meta_X_holdout)[:, 1]
 y_pred  = (y_proba >= THRESHOLD).astype(int)
 
@@ -851,7 +854,7 @@ print(f"\n{classification_report(y_holdout, y_pred)}")
 
 # Individual base model holdout ROC-AUC for reference
 print("  Base model holdout ROC-AUC:")
-print(f"    LR  : {roc_auc_score(y_holdout, h_lr):.4f}")
+print(f"    XGB : {roc_auc_score(y_holdout, h_xgb):.4f}")
 print(f"    RFC : {roc_auc_score(y_holdout, h_rfc):.4f}")
 print(f"    LGBM: {roc_auc_score(y_holdout, h_lgbm):.4f}")
 print(f"    CAT : {roc_auc_score(y_holdout, h_cat):.4f}")
@@ -911,7 +914,7 @@ wandb.log({
     "holdout/fp":           int(cm[0, 1]),
     "holdout/fn":           int(cm[1, 0]),
     "holdout/tp":           int(cm[1, 1]),
-    "holdout/roc_auc_lr":   roc_auc_score(y_holdout, h_lr),
+    "holdout/roc_auc_xgb":  roc_auc_score(y_holdout, h_xgb),
     "holdout/roc_auc_rfc":  roc_auc_score(y_holdout, h_rfc),
     "holdout/roc_auc_lgbm": roc_auc_score(y_holdout, h_lgbm),
     "holdout/roc_auc_cat":  roc_auc_score(y_holdout, h_cat),
@@ -948,8 +951,7 @@ _model_dir = project_root / "models" / model_name
 _model_dir.mkdir(parents=True, exist_ok=True)
 
 joblib.dump(meta_lr,        _model_dir / "stacking-meta-lr.joblib")
-joblib.dump(final_lr,       _model_dir / "stacking-base-lr.joblib")
-joblib.dump(final_scaler,   _model_dir / "stacking-scaler-lr.joblib")
+joblib.dump(final_xgb,      _model_dir / "stacking-base-xgb.joblib")
 joblib.dump(final_rfc,      _model_dir / "stacking-base-rfc.joblib")
 joblib.dump(final_lgbm,     _model_dir / "stacking-base-lgbm.joblib")
 joblib.dump(final_cat,      _model_dir / "stacking-base-cat.joblib")
@@ -1015,13 +1017,12 @@ if create_kaggle_csv:
             X_test[_feat] = _grp_test[_src_col].map(_rmap).fillna(true_rate_fallback).values
 
     # Run through the stacking pipeline
-    _X_test_scaled = final_scaler.transform(X_test)
-    t_lr   = final_lr.predict_proba(_X_test_scaled)[:, 1]
+    t_xgb  = final_xgb.predict_proba(X_test)[:, 1]
     t_rfc  = final_rfc.predict_proba(X_test)[:, 1]
     t_lgbm = final_lgbm.predict_proba(X_test)[:, 1]
     t_cat  = final_cat.predict_proba(X_test)[:, 1]
 
-    meta_X_test = np.column_stack([t_lr, t_rfc, t_lgbm, t_cat])
+    meta_X_test = np.column_stack([t_xgb, t_rfc, t_lgbm, t_cat])
     test_proba  = meta_lr.predict_proba(meta_X_test)[:, 1]
     test_pred   = (test_proba >= THRESHOLD).astype(int)
 
