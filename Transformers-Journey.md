@@ -1390,3 +1390,194 @@ weighted avg       0.65      0.66      0.65      1790
 - Holdout gap to val should narrow (less overfitting at the head)
 - If 0.3 hurts, try 0.2 as a midpoint
 
+----------------------------------
+
+--> Run 7 Output
+[SECTION] Training  [20:42:13]
+  Model dtype     : torch.float32
+  loss_weights    : tensor([1.4200, 0.7700], device='cuda:0')
+  Train batches   : 403  Val batches: 23
+
+  --- Epoch 1/3 ---  [20:42:13]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.6454
+    Batch 50/403  avg_loss=0.7109
+    Batch 100/403  avg_loss=0.7024
+    Batch 150/403  avg_loss=0.7012
+    Batch 200/403  avg_loss=0.6997
+    Batch 250/403  avg_loss=0.6996
+    Batch 300/403  avg_loss=0.6993
+    Batch 350/403  avg_loss=0.6990
+    Batch 400/403  avg_loss=0.6986
+  Train loss: 0.6986  — starting val evaluation
+  Val proba range: [0.5016, 0.5132]  NaNs: 0
+  Epoch 1/3  train_loss=0.6986  val_loss=0.6928  val_macro_f1=0.3932  val_roc_auc=0.5624  (9.1s)
+    New best val macro_f1=0.3932 — checkpoint saved
+
+  [Phase 2] Unfreezing backbone + rebuilding optimizer with LLRD
+  Backbone unfrozen — trainable=141,896,450
+  LLRD groups: 16  LR range: [9.57e-06, 2.00e-05]
+
+  --- Epoch 2/3 ---  [20:42:22]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.7193
+    Batch 50/403  avg_loss=0.7004
+    Batch 100/403  avg_loss=0.6994
+    Batch 150/403  avg_loss=0.6933
+    Batch 200/403  avg_loss=0.6908
+    Batch 250/403  avg_loss=0.6879
+    Batch 300/403  avg_loss=0.6859
+    Batch 350/403  avg_loss=0.6810
+    Batch 400/403  avg_loss=0.6796
+  Train loss: 0.6802  — starting val evaluation
+  Val proba range: [0.2236, 0.7645]  NaNs: 0
+  Epoch 2/3  train_loss=0.6802  val_loss=0.6535  val_macro_f1=0.5929  val_roc_auc=0.6613  (28.7s)
+    New best val macro_f1=0.5929 — checkpoint saved
+
+  --- Epoch 3/3 ---  [20:42:51]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.7787
+    Batch 50/403  avg_loss=0.6332
+    Batch 100/403  avg_loss=0.6402
+    Batch 150/403  avg_loss=0.6400
+    Batch 200/403  avg_loss=0.6386
+    Batch 250/403  avg_loss=0.6367
+    Batch 300/403  avg_loss=0.6348
+    Batch 350/403  avg_loss=0.6332
+    Batch 400/403  avg_loss=0.6351
+  Train loss: 0.6351  — starting val evaluation
+  Val proba range: [0.1463, 0.9401]  NaNs: 0
+  Epoch 3/3  train_loss=0.6351  val_loss=0.6604  val_macro_f1=0.6090  val_roc_auc=0.6702  (28.8s)
+    New best val macro_f1=0.6090 — checkpoint saved
+
+[SECTION] Loading best checkpoint  [20:43:21]
+
+[SECTION] Threshold tuning on val set  [20:43:22]
+   threshold   macro_f1
+        0.20   0.4427
+        0.21   0.4725
+        0.22   0.4906
+        0.23   0.4962
+        0.24   0.5199
+        0.25   0.5373
+        0.26   0.5451
+        0.27   0.5575
+        0.28   0.5733
+        0.29   0.5765
+        0.30   0.5751
+        0.31   0.5883
+        0.32   0.5903
+        0.33   0.6115
+        0.34   0.6137
+        0.35   0.6179
+        0.36   0.6119
+        0.37   0.6165
+        0.38   0.6136
+        0.39   0.6148
+        0.40   0.6196
+        0.41   0.6157
+        0.42   0.6145
+        0.43   0.6187
+        0.44   0.6178
+        0.45   0.6198  ←
+        0.46   0.6164
+        0.47   0.6196
+        0.48   0.6142
+        0.49   0.6099
+        0.50   0.6090
+        0.51   0.6024
+        0.52   0.6010
+        0.53   0.5997
+        0.54   0.5988
+        0.55   0.5961
+        0.56   0.5907
+        0.57   0.5909
+        0.58   0.5811
+        0.59   0.5891
+        0.60   0.5874
+        0.61   0.5829
+        0.62   0.5792
+        0.63   0.5712
+        0.64   0.5670
+        0.65   0.5628
+        0.66   0.5514
+        0.67   0.5483
+        0.68   0.5381
+        0.69   0.5256
+        0.70   0.5126
+        0.71   0.5087
+        0.72   0.5009
+        0.73   0.4888
+        0.74   0.4803
+        0.75   0.4634
+        0.76   0.4583
+
+  Best threshold: 0.45  (val macro_f1=0.6198)
+
+[SECTION] Holdout evaluation  [20:43:22]
+  Threshold: 0.45
+
+Holdout results:
+  roc_auc: 0.6700
+  pr_auc: 0.7711
+  macro_f1: 0.6205
+  f1: 0.7195
+  precision: 0.7395
+  recall: 0.7006
+  accuracy: 0.6464
+  mcc: 0.2427
+  balanced_acc: 0.6237
+
+              precision    recall  f1-score   support
+
+           0       0.50      0.55      0.52       631
+           1       0.74      0.70      0.72      1159
+
+    accuracy                           0.65      1790
+   macro avg       0.62      0.62      0.62      1790
+weighted avg       0.65      0.65      0.65      1790
+
+**Script config at time of Run 7**
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Model | `microsoft/deberta-v3-small` | 86M params, FP32 |
+| EPOCHS | 3 | Back to R5 regime |
+| FREEZE_EPOCHS | 1 | Backbone frozen for epoch 1 |
+| CLS_DROPOUT | 0.3 | New — up from default ~0.1 |
+| LR | 2e-5 | — |
+| LLRD_FACTOR | 0.9 | — |
+| WARMUP_RATIO | 0.1 | — |
+| Threshold tuning | On val set | Best threshold: 0.45 (↑ from R5's 0.38 — better calibrated) |
+
+**Key observations — dropout marginally improved holdout; major gain in class 0 recall**
+
+| Metric | R4 (+LLRD) | R5 (freeze) | R6 (5ep) | R7 (dropout 0.3) |
+|--------|------------|-------------|----------|------------------|
+| Best epoch | 1 | 3 | 3 | 3 |
+| Best val macro_f1 | 0.6145 | 0.6129 | 0.6002 | 0.6090 |
+| Tuned val macro_f1 | 0.6145 | 0.6165 | 0.6113 | **0.6198** |
+| Holdout macro_f1 | 0.6133 | 0.6203 | 0.6126 | **0.6205** |
+| Holdout ROC-AUC | 0.6538 | 0.6679 | 0.6757 | 0.6700 |
+| Class 0 recall | 0.49 | 0.45 | 0.43 | **0.55** |
+| Balanced accuracy | 0.6125 | 0.6173 | 0.6098 | **0.6237** |
+| Best threshold | 0.50 | 0.38 | 0.36 | **0.45** |
+
+- **Holdout macro_f1 0.6205** — marginally above R5 (0.6203, +0.0002); statistically tied on F1, but a real result
+- **Class 0 recall jumped from 0.45 to 0.55** — the biggest qualitative improvement this run; dropout forced the model to hedge more conservatively, recovering minority class (true statements) at the cost of some class 1 recall (0.79 → 0.70)
+- **Threshold shifted to 0.45** — closest to 0.5 of any run; higher dropout produces better-calibrated probabilities that need less aggressive post-hoc correction
+- **Balanced accuracy 0.6237** — new best across all runs; model is genuinely more balanced between classes
+- **Val loss flatter**: epoch 2 (0.6535) → epoch 3 (0.6604) — smaller jump than R5 (0.6530 → 0.6622); dropout is regularizing as intended
+- **Train loss higher** at epoch 3 (0.6351 vs R5's 0.6294) — expected; dropout adds noise during training
+- Val F1 at epoch 3 (0.6090) is below R5's (0.6129), yet holdout is slightly better — dropout reduced overfitting to the 716-sample val set
+
+**Option A conclusion: converged at ~0.620–0.621 holdout macro F1**
+
+Seven runs have exhausted the main Option A levers: LR, warmup, schedule, LLRD, epoch count, freeze strategy, and dropout. The ceiling is ~0.621 holdout F1 with text-only DeBERTa-v3-small on this dataset.
+
+- **R7 is the best checkpoint for late fusion (Option C)**: highest balanced accuracy, best class 0 recall (0.55), threshold closest to 0.5 — the most complementary error profile to the tree-based stacking ensemble (which has strong class 1 precision but weak class 0 recall)
+- **Both R5 and R7 beat the stacking baseline** (0.6168) by ~0.003–0.004 F1
+
+**Next: Option B (hybrid) or Option C (late fusion)**
+
+Option C is lower effort and exploits the error complementarity immediately: add R7's `ho_proba` as a new column in `stacking.py`'s OOF matrix and let the meta-LR re-weight it alongside tree model probas. Expected gain: +0.003–0.008 F1 if errors are as complementary as the class recall profiles suggest.
+
+Option B (hybrid) adds metadata features (speaker/party true-rate) directly into the transformer — higher ceiling but requires today's transformer_hybrid.py work.
+
