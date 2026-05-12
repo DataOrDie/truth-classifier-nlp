@@ -49,6 +49,7 @@ from torch.amp import autocast
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 from transformers import (
+    AutoConfig,
     AutoModelForSequenceClassification,
     AutoTokenizer,
     get_linear_schedule_with_warmup,
@@ -248,8 +249,10 @@ def _unfreeze_backbone(model) -> None:
 # Model
 # ============================================================
 print(f"\n[SECTION] Loading model: {MODEL_NAME}  [{_now()}]")
+_cfg = AutoConfig.from_pretrained(MODEL_NAME, num_labels=2)
+_cfg.cls_dropout = CLS_DROPOUT
 model = AutoModelForSequenceClassification.from_pretrained(
-    MODEL_NAME, num_labels=2, cls_dropout=CLS_DROPOUT, torch_dtype=torch.float32
+    MODEL_NAME, config=_cfg, torch_dtype=torch.float32
 )
 model.to(device)
 n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
