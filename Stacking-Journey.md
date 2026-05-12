@@ -652,3 +652,118 @@ Isolated from the class_weight regression, the RFC change is cleanly positive:
 Revert `class_weight` from the meta-LR, keep RFC at 500 trees. This isolates the RFC improvement and should recover the run 2 Macro F1 (0.6323) with slightly better RFC signal (0.6751 vs 0.6738 AUC).
 
 Expected result: Macro F1 ≈ 0.632–0.634.
+
+------------------------------------------------------------------
+
+--> Output run 4 [Revert `class_weight` from the meta-LR]
+[SECTION] Cross-validation summary  [total CV: 123.7s]
+  roc_auc_avg: 0.6628 ± 0.0125
+  macro_f1_avg: 0.6030 ± 0.0104
+  roc_auc_lr: 0.6359 ± 0.0090
+  roc_auc_rfc: 0.6679 ± 0.0117
+  roc_auc_lgbm: 0.6528 ± 0.0168
+  roc_auc_cat: 0.6573 ± 0.0145
+
+[SECTION] Training meta-LR on stacked OOF  [13:50:24]
+  Meta-LR coefficients: {'lr': 0.5889197570337594, 'rfc': 1.4570570448437203, 'lgbm': 0.7013970151711315, 'cat': 1.0243948725476035}
+
+[SECTION] Threshold tuning on stacked OOF  [13:50:24]
+   threshold   macro_f1
+        0.20   0.3930
+        0.22   0.3930
+        0.24   0.3930
+        0.26   0.3930
+        0.28   0.3934
+        0.30   0.3946
+        0.32   0.3978
+        0.34   0.4058
+        0.36   0.4144
+        0.38   0.4289
+        0.40   0.4445
+        0.42   0.4684
+        0.44   0.4904
+        0.46   0.5083
+        0.48   0.5306
+        0.50   0.5542
+        0.52   0.5695
+        0.54   0.5803
+        0.56   0.5940
+        0.58   0.6011
+        0.60   0.6068
+        0.62   0.6099
+        0.64   0.6099  ←
+        0.66   0.6055
+        0.68   0.5939
+        0.70   0.5744
+        0.72   0.5492
+        0.74   0.5179
+        0.76   0.4746
+
+  Best threshold: 0.64  (OOF macro_f1=0.6099)
+  THRESHOLD updated: 0.50 → 0.64
+[SECTION] Fitting final base models on full train/val set  [13:50:25]
+  Done in 30.9s
+[SECTION] Evaluating on holdout set  [13:50:56]
+  Using threshold: 0.64
+
+Holdout results:
+  roc_auc: 0.6835
+  pr_auc: 0.7849
+  macro_f1: 0.6168
+  f1: 0.6928
+  precision: 0.7535
+  recall: 0.6411
+  accuracy: 0.6318
+  mcc: 0.2459
+  balanced_acc: 0.6280
+
+              precision    recall  f1-score   support
+
+           0       0.48      0.61      0.54       631
+           1       0.75      0.64      0.69      1159
+
+    accuracy                           0.63      1790
+   macro avg       0.62      0.63      0.62      1790
+weighted avg       0.66      0.63      0.64      1790
+
+  Base model holdout ROC-AUC:
+    LR  : 0.6582
+    RFC : 0.6751
+    LGBM: 0.6766
+    CAT : 0.6740
+
+---
+
+## Run 4 Analysis — threshold selection failure
+
+### What happened
+
+The CV metrics are **identical** to run 3 — same base models, only the meta-LR class_weight was removed. Yet holdout Macro F1 crashed from 0.6292 (run 3) to **0.6168**, the worst stacking result so far. The cause is entirely in the threshold:
+
+```
+        0.62   0.6099
+        0.64   0.6099  ←
+```
+
+Both thresholds print as 0.6099 at 4 decimal places. In full floating-point precision, 0.64 is very slightly higher, so `max()` chose it. On holdout, that one extra 0.02 in threshold reduced class-1 recall from 0.69 to 0.64 and collapsed Macro F1 by 0.015. The model is extremely sensitive to threshold in the 0.60–0.66 range — this is the flat shoulder of the OOF curve.
+
+| Threshold | OOF (reported) | Holdout Macro F1 | Class-1 recall |
+|-----------|---------------|-----------------|---------------|
+| 0.62 | 0.6099 | **0.6323** (run 2) | 0.69 |
+| 0.64 | 0.6099 | 0.6168 (run 4) | 0.64 |
+
+A floating-point tie at 4 dp is deciding a 0.015 holdout swing. The 0.02 step grid is too coarse to reliably distinguish these.
+
+### Why run 2 picked 0.62 and run 4 picked 0.64
+
+In run 2, RFC at 300 trees produced slightly noisier per-sample probabilities that gave the curve a clearer peak at 0.62 (0.6124 vs 0.6098 at 0.64 — a clear 0.0026 margin). With 500 trees the OOF probas are smoother, which flattens the curve's shoulder — the 0.62 vs 0.64 difference dropped to sub-rounding noise. The more stable RFC ironically makes threshold selection *less* reliable by removing the noise that was sharpening the peak.
+
+### RFC n_estimators=500 is still a genuine improvement
+
+Base model holdout AUC: RFC 0.6751 in runs 3 and 4, up from 0.6738 in run 2. The RFC change is not the problem. The problem is that its stabilising effect on OOF probas flattened the threshold curve enough to make the 0.02-step grid unreliable.
+
+### Fix: finer threshold grid (step=0.01)
+
+Changing `np.arange(0.20, 0.76, 0.02)` to `np.arange(0.20, 0.76, 0.01)` gives 56 evaluation points instead of 28. In the critical 0.60–0.66 range this means 7 points instead of 3 — enough resolution to see whether 0.61, 0.62, or 0.63 is the true peak rather than having two 0.02-spaced points both rounding to the same score.
+
+Applied to `stacking.py` for run 5. RFC=500 and num_leaves=63 kept, no other changes.

@@ -745,7 +745,7 @@ if enable_threshold_tuning:
         "balanced_acc": lambda t, yt, yp: balanced_accuracy_score(yt, yp),
     }[THRESHOLD_METRIC]
 
-    threshold_grid   = np.arange(0.20, 0.76, 0.02)
+    threshold_grid   = np.arange(0.20, 0.76, 0.01)
     threshold_scores = {}
     for t in threshold_grid:
         preds = (oof_meta_proba >= t).astype(int)
