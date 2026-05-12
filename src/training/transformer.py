@@ -84,8 +84,8 @@ MODEL_NAME   = "microsoft/deberta-v3-small"
 MAX_LENGTH   = 128
 BATCH_SIZE   = 16       # safe for 12 GB VRAM; bump to 32 on Kaggle T4 (16 GB)
 EPOCHS       = 3
-LR           = 2e-5
-WARMUP_RATIO = 0.1
+LR           = 1e-5
+WARMUP_RATIO = 0.2
 WEIGHT_DECAY = 0.01
 
 CLASS_WEIGHTS = [1.42, 0.77]   # {0: true, 1: false} — same as all other scripts
