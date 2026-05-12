@@ -80,14 +80,15 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # ============================================================
 # Config
 # ============================================================
-MODEL_NAME   = "microsoft/deberta-v3-small"
-MAX_LENGTH   = 128
-BATCH_SIZE   = 16       # safe for 12 GB VRAM; bump to 32 on Kaggle T4 (16 GB)
-EPOCHS       = 3
-LR           = 2e-5     # head LR; encoder layers decay by LLRD_FACTOR per layer
-LLRD_FACTOR  = 0.9      # layer-wise LR decay multiplier
-WARMUP_RATIO = 0.1
-WEIGHT_DECAY = 0.01
+MODEL_NAME    = "microsoft/deberta-v3-small"
+MAX_LENGTH    = 128
+BATCH_SIZE    = 16       # safe for 12 GB VRAM; bump to 32 on Kaggle T4 (16 GB)
+EPOCHS        = 3
+FREEZE_EPOCHS = 1        # freeze backbone for this many epochs; 0 to disable
+LR            = 2e-5     # head LR; encoder layers decay by LLRD_FACTOR per layer
+LLRD_FACTOR   = 0.9      # layer-wise LR decay multiplier
+WARMUP_RATIO  = 0.1
+WEIGHT_DECAY  = 0.01
 
 CLASS_WEIGHTS = [1.42, 0.77]   # {0: true, 1: false} — same as all other scripts
 THRESHOLD     = 0.5
@@ -225,6 +226,24 @@ def _build_llrd_param_groups(model, base_lr: float, llrd_factor: float, weight_d
 
 
 # ============================================================
+# Freeze / unfreeze helpers
+# ============================================================
+def _freeze_backbone(model) -> None:
+    for name, param in model.named_parameters():
+        if "classifier" not in name and "pooler" not in name:
+            param.requires_grad_(False)
+    frozen    = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"  Backbone frozen — frozen={frozen:,}  trainable={trainable:,}")
+
+
+def _unfreeze_backbone(model) -> None:
+    for param in model.parameters():
+        param.requires_grad_(True)
+    print(f"  Backbone unfrozen — trainable={sum(p.numel() for p in model.parameters()):,}")
+
+
+# ============================================================
 # Model
 # ============================================================
 print(f"\n[SECTION] Loading model: {MODEL_NAME}  [{_now()}]")
@@ -236,13 +255,19 @@ print(f"  Parameters: {n_params:,}")
 loss_weights = torch.tensor(CLASS_WEIGHTS, dtype=torch.float32).to(device)
 criterion    = nn.CrossEntropyLoss(weight=loss_weights)
 
-param_groups = _build_llrd_param_groups(model, LR, LLRD_FACTOR, WEIGHT_DECAY)
-optimizer    = AdamW(param_groups)
-print(f"  LLRD groups: {len(param_groups)}  LR range: [{min(g['lr'] for g in param_groups):.2e}, {max(g['lr'] for g in param_groups):.2e}]")
+# ---- Phase 1: classifier-only (frozen backbone) ----
+if FREEZE_EPOCHS > 0:
+    _freeze_backbone(model)
+p1_steps    = len(train_loader) * max(FREEZE_EPOCHS, 1)
+p1_warmup   = int(p1_steps * WARMUP_RATIO)
+p1_params   = [p for p in model.parameters() if p.requires_grad]
+optimizer   = AdamW(p1_params, lr=LR, weight_decay=WEIGHT_DECAY)
+scheduler   = get_linear_schedule_with_warmup(optimizer, p1_warmup, p1_steps)
+print(f"  Phase 1 optimizer — {len(p1_params)} param tensors  lr={LR:.1e}")
 
-total_steps  = len(train_loader) * EPOCHS
-warmup_steps = int(total_steps * WARMUP_RATIO)
-scheduler    = get_linear_schedule_with_warmup(optimizer, warmup_steps, total_steps)
+# ---- Phase 2: full LLRD (built lazily at epoch FREEZE_EPOCHS+1) ----
+p2_steps  = len(train_loader) * max(EPOCHS - FREEZE_EPOCHS, 0)
+p2_warmup = int(p2_steps * WARMUP_RATIO)
 
 
 # ============================================================
@@ -256,11 +281,12 @@ run = wandb.init(
         "model":         MODEL_NAME,
         "max_length":    MAX_LENGTH,
         "batch_size":    BATCH_SIZE,
-        "epochs":        EPOCHS,
-        "lr":            LR,
-        "warmup_ratio":  WARMUP_RATIO,
-        "weight_decay":  WEIGHT_DECAY,
-        "llrd_factor":   LLRD_FACTOR,
+        "epochs":         EPOCHS,
+        "freeze_epochs":  FREEZE_EPOCHS,
+        "lr":             LR,
+        "warmup_ratio":   WARMUP_RATIO,
+        "weight_decay":   WEIGHT_DECAY,
+        "llrd_factor":    LLRD_FACTOR,
         "class_weights": CLASS_WEIGHTS,
         "scheduler":     "linear",
         "seed":          SEED,
@@ -329,6 +355,15 @@ best_ckpt   = OUTPUT_DIR / f"{model_slug}-best.pt"
 
 for epoch in range(1, EPOCHS + 1):
     _t = time()
+    # Switch to phase 2 (LLRD, full backbone) on the first post-freeze epoch
+    if FREEZE_EPOCHS > 0 and epoch == FREEZE_EPOCHS + 1:
+        print(f"\n  [Phase 2] Unfreezing backbone + rebuilding optimizer with LLRD")
+        _unfreeze_backbone(model)
+        param_groups = _build_llrd_param_groups(model, LR, LLRD_FACTOR, WEIGHT_DECAY)
+        optimizer    = AdamW(param_groups)
+        scheduler    = get_linear_schedule_with_warmup(optimizer, p2_warmup, p2_steps)
+        print(f"  LLRD groups: {len(param_groups)}  LR range: [{min(g['lr'] for g in param_groups):.2e}, {max(g['lr'] for g in param_groups):.2e}]")
+
     print(f"\n  --- Epoch {epoch}/{EPOCHS} ---  [{_now()}]")
     train_loss = train_epoch(model, train_loader, optimizer, scheduler, criterion)
     print(f"  Train loss: {train_loss:.4f}  — starting val evaluation")

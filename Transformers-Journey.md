@@ -853,49 +853,48 @@ Holdout results:
    macro avg       0.61      0.61      0.61      1790
 weighted avg       0.65      0.65      0.65      1790
 
-Looking at all 4 runs together, the pattern is unmistakable:
+**Script config at time of Run 4**
 
-  ┌─────┬──────┬───────────────┬────────────┬────────────┬────────────┐
-  │ Run │  LR  │    Config     │ Ep1 val_f1 │ Holdout F1 │ Best epoch │
-  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
-  │ R1  │ 2e-5 │ baseline      │ 0.6128     │ 0.6127     │ 1          │
-  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
-  │ R2  │ 1e-5 │ lower LR      │ 0.5993     │ 0.6039     │ 1          │
-  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
-  │ R3  │ 3e-5 │ 1ep+cosine+LS │ 0.5993     │ 0.5851     │ 1          │
-  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
-  │ R4  │ 2e-5 │ +LLRD         │ 0.6145     │ 0.6133     │ 1          │
-  └─────┴──────┴───────────────┴────────────┴────────────┴────────────┘
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Model | `microsoft/deberta-v3-small` | 86M params, FP32 |
+| EPOCHS | 3 | Best checkpoint saved by val macro_f1 |
+| LR | 2e-5 | Same as Run 1 |
+| LLRD_FACTOR | 0.9 | New — head=2e-5, layer 11≈1.8e-5, layer 0≈0.43e-5, embeddings≈0.39e-5 |
+| WARMUP_RATIO | 0.1 | — |
+| WEIGHT_DECAY | 0.01 | — |
+| Scheduler | Linear warmup + decay | — |
+| Threshold tuning | On val set | Best threshold: 0.50 (no tuning benefit — natural threshold won) |
 
-  Epoch 1 always wins. The model is absorbing all useful gradient signal in one pass on ~6,400 samples, then overfitting
-  noise. LR and LLRD tuning have improved epoch 1 quality marginally, but nothing has changed the fundamental dynamic.
+**Key observations — Run 4 confirmed LLRD helps marginally; epoch 1 pattern unchanged**
 
-  The untried lever that directly addresses this: freeze-then-unfreeze (gradual unfreezing).
+| Metric | R1 (2e-5) | R2 (1e-5) | R3 (3e-5, 1ep) | R4 (+LLRD) |
+|--------|-----------|-----------|-----------------|------------|
+| Ep1 val_macro_f1 | 0.6122 | 0.5993 | 0.5993 | **0.6145** |
+| Tuned val macro_f1 | 0.6227 | 0.6193 | 0.6020 | 0.6145 |
+| Holdout macro_f1 | 0.6127 | 0.6039 | 0.5851 | **0.6133** |
+| Holdout ROC-AUC | 0.6552 | 0.6508 | 0.6416 | 0.6538 |
+| Best epoch | 1 | 1 | 1 | 1 |
 
-  - Epoch 1: freeze the entire DeBERTa backbone, train only the classifier head (~1,500 params) → head adapts to pretrained
-  features without disturbing them
-  - Epochs 2–3: unfreeze everything, LLRD rates apply → backbone now fine-tunes from a warm, stable head, not from random
-  │ R1  │ 2e-5 │ baseline      │ 0.6128     │ 0.6127     │ 1          │
-  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
-  │ R2  │ 1e-5 │ lower LR      │ 0.5993     │ 0.6039     │ 1          │
-  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
-  │ R3  │ 3e-5 │ 1ep+cosine+LS │ 0.5993     │ 0.5851     │ 1          │
-  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
-  │ R4  │ 2e-5 │ +LLRD         │ 0.6145     │ 0.6133     │ 1          │
-  └─────┴──────┴───────────────┴────────────┴────────────┴────────────┘
+- LLRD gave a marginal but consistent gain: epoch 1 val F1 0.6122 → 0.6145, holdout 0.6127 → 0.6133
+- Threshold collapsed to 0.50 — first time threshold tuning gave zero benefit; probabilities better calibrated by LLRD
+- Val loss trajectory: epoch 2 (0.6637) → epoch 3 (0.7104) — same overfitting curve as all prior runs
+- Epoch 1 is the best checkpoint across all 4 runs without exception — LR, warmup, schedule, and LLRD cannot fix this
+- Root cause confirmed: classifier head and backbone fine-tune simultaneously from a random head; they destabilize each other after one pass, and the model memorizes noise from epoch 2 onward
 
-  Epoch 1 always wins. The model is absorbing all useful gradient signal in one pass on ~6,400 samples, then overfitting
-  noise. LR and LLRD tuning have improved epoch 1 quality marginally, but nothing has changed the fundamental dynamic.
+**Next: Run 5 — Freeze-then-unfreeze (gradual unfreezing)**
 
-  The untried lever that directly addresses this: freeze-then-unfreeze (gradual unfreezing).
+**Changes from Run 4:**
+- `FREEZE_EPOCHS = 1` — DeBERTa backbone frozen for epoch 1; only the ~1,500-param classifier head trains
+- Phase 1 optimizer: classifier params only, flat `LR=2e-5`, linear warmup over epoch 1 steps only
+- Phase 2 optimizer: rebuilt fresh at epoch 2 with LLRD across all layers, with its own linear warmup over the remaining 2-epoch steps
+- All other config unchanged: LR=2e-5, LLRD_FACTOR=0.9, WARMUP_RATIO=0.1, EPOCHS=3
 
-  - Epoch 1: freeze the entire DeBERTa backbone, train only the classifier head (~1,500 params) → head adapts to pretrained
-  features without disturbing them
-  - Epochs 2–3: unfreeze everything, LLRD rates apply → backbone now fine-tunes from a warm, stable head, not from random
-  initialization
+**Decision rationale:** Every run peaks at epoch 1 because the random classifier head destabilizes the backbone from the first step. Freezing the backbone in epoch 1 lets the head converge on top of frozen pretrained DeBERTa features. When the backbone unfreezes at epoch 2, it fine-tunes starting from a stable, task-adapted head — giving epochs 2–3 a real signal to follow instead of noise from a still-random head.
 
-  This is the standard small-data fix — it changes what is learned in each epoch, not just how fast. The hypothesis is that
-  epochs 2–3 currently degrade because the classifier and backbone are fighting each other simultaneously from the start;
-  separating those phases may let multi-epoch training actually help.
+**Expected behavior:**
+- Epoch 1 val F1 will be lower than R4's 0.6145 (classifier-only learning is weaker than full fine-tuning in the first pass)
+- Epoch 2 should show genuine improvement for the first time — backbone fine-tunes on top of a warm head
+- Best checkpoint should shift to epoch 2 or 3 rather than epoch 1
+- Val loss should not spike at epoch 2 — the transition from frozen to unfrozen should be smoother
 
-  
