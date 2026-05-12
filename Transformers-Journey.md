@@ -240,5 +240,168 @@ NVIDIA GeForce RTX 5070
   That's it. The script handles the rest — tokenizing, training, threshold tuning, holdout eval, W&B logging, and saving
    submission-deberta-v3-small-YYYYMMDD-HHMM.csv to /kaggle/working/.
 
+-----------------------------------------------------------------------
 
+
+---> Run 1 - 
+[SECTION] Training  [13:36:50]
+  Model dtype     : torch.float32
+  loss_weights    : tensor([1.4200, 0.7700], device='cuda:0')
+  Train batches   : 403  Val batches: 23
+
+  --- Epoch 1/3 ---  [13:36:50]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.6651
+    Batch 50/403  avg_loss=0.7040
+    Batch 100/403  avg_loss=0.6986
+    Batch 150/403  avg_loss=0.6928
+    Batch 200/403  avg_loss=0.6883
+    Batch 250/403  avg_loss=0.6841
+    Batch 300/403  avg_loss=0.6819
+    Batch 350/403  avg_loss=0.6767
+    Batch 400/403  avg_loss=0.6767
+  Train loss: 0.6767  — starting val evaluation
+  Val proba range: [0.2699, 0.6893]  NaNs: 0
+  Epoch 1/3  train_loss=0.6767  val_loss=0.6539  val_macro_f1=0.6128  val_roc_auc=0.6700  (29.7s)
+    New best val macro_f1=0.6128 — checkpoint saved
+
+  --- Epoch 2/3 ---  [13:37:21]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.5945
+    Batch 50/403  avg_loss=0.6278
+    Batch 100/403  avg_loss=0.6316
+    Batch 150/403  avg_loss=0.6273
+    Batch 200/403  avg_loss=0.6283
+    Batch 250/403  avg_loss=0.6252
+    Batch 300/403  avg_loss=0.6254
+    Batch 350/403  avg_loss=0.6214
+    Batch 400/403  avg_loss=0.6223
+  Train loss: 0.6227  — starting val evaluation
+  Val proba range: [0.1644, 0.9476]  NaNs: 0
+  Epoch 2/3  train_loss=0.6227  val_loss=0.6692  val_macro_f1=0.6005  val_roc_auc=0.6635  (29.4s)
+
+  --- Epoch 3/3 ---  [13:37:50]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.6072
+    Batch 50/403  avg_loss=0.5313
+    Batch 100/403  avg_loss=0.5432
+    Batch 150/403  avg_loss=0.5448
+    Batch 200/403  avg_loss=0.5393
+    Batch 250/403  avg_loss=0.5373
+    Batch 300/403  avg_loss=0.5315
+    Batch 350/403  avg_loss=0.5299
+    Batch 400/403  avg_loss=0.5334
+  Train loss: 0.5329  — starting val evaluation
+  Val proba range: [0.0957, 0.9819]  NaNs: 0
+  Epoch 3/3  train_loss=0.5329  val_loss=0.7601  val_macro_f1=0.5989  val_roc_auc=0.6597  (29.4s)
+
+[SECTION] Loading best checkpoint  [13:38:19]
+
+[SECTION] Threshold tuning on val set  [13:38:20]
+   threshold   macro_f1
+        0.20   0.3932
+        0.21   0.3932
+        0.22   0.3932
+        0.23   0.3932
+        0.24   0.3932
+        0.25   0.3932
+        0.26   0.3932
+        0.27   0.3927
+        0.28   0.3964
+        0.29   0.3996
+        0.30   0.4222
+        0.31   0.4359
+        0.32   0.4678
+        0.33   0.4733
+        0.34   0.4839
+        0.35   0.5096
+        0.36   0.5352
+        0.37   0.5459
+        0.38   0.5462
+        0.39   0.5569
+        0.40   0.5823
+        0.41   0.5903
+        0.42   0.6047
+        0.43   0.6081
+        0.44   0.6122
+        0.45   0.6094
+        0.46   0.6100
+        0.47   0.6102
+        0.48   0.6227  ←
+        0.49   0.6165
+        0.50   0.6128
+        0.51   0.6140
+        0.52   0.6157
+        0.53   0.6041
+        0.54   0.6075
+        0.55   0.5989
+        0.56   0.5865
+        0.57   0.5672
+        0.58   0.5655
+        0.59   0.5441
+        0.60   0.5129
+        0.61   0.4782
+        0.62   0.4361
+        0.63   0.3944
+        0.64   0.3536
+        0.65   0.3023
+        0.66   0.2857
+        0.67   0.2692
+        0.68   0.2668
+        0.69   0.2603
+        0.70   0.2603
+        0.71   0.2603
+        0.72   0.2603
+        0.73   0.2603
+        0.74   0.2603
+        0.75   0.2603
+        0.76   0.2603
+
+  Best threshold: 0.48  (val macro_f1=0.6227)
+
+[SECTION] Holdout evaluation  [13:38:20]
+  Threshold: 0.48
+
+Holdout results:
+  roc_auc: 0.6552
+  pr_auc: 0.7566
+  macro_f1: 0.6127
+  f1: 0.7306
+  precision: 0.7253
+  recall: 0.7360
+  accuracy: 0.6486
+  mcc: 0.2255
+  balanced_acc: 0.6120
+
+              precision    recall  f1-score   support
+
+           0       0.50      0.49      0.49       631
+           1       0.73      0.74      0.73      1159
+
+    accuracy                           0.65      1790
+   macro avg       0.61      0.61      0.61      1790
+weighted avg       0.65      0.65      0.65      1790
+
+**Script config at time of Run 1**
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Model | `microsoft/deberta-v3-small` | 86M params, FP32 |
+| MAX_LENGTH | 128 | Covers 99%+ of statements |
+| BATCH_SIZE | 16 | Safe for 12 GB VRAM |
+| EPOCHS | 3 | Best checkpoint saved by val macro_f1 |
+| LR | 2e-5 | Too aggressive — model peaked at epoch 1 |
+| WARMUP_RATIO | 0.1 | 10% of total steps |
+| WEIGHT_DECAY | 0.01 | — |
+| CLASS_WEIGHTS | [1.42, 0.77] | {0: true, 1: false} |
+| AMP | Disabled | DeBERTa-v3 unstable in BF16/FP16 |
+| Split | 72% train / 8% val / 20% holdout | Val used for checkpoint + threshold tuning |
+| Threshold tuning | On val set | Best threshold: 0.48 |
+| Optimizer | AdamW | — |
+| Scheduler | Linear warmup + decay | — |
+
+**Key observations**
+- Overfitting after epoch 1: val loss rose epoch 2→3 while train loss kept falling
+- Holdout macro_f1 0.6127 — just below stacking R5 (0.6168)
+- ROC-AUC 0.6552 — notably below stacking (0.6835)
+- Class 1 recall improved over stacking (0.74 vs 0.64) — different error profile, promising for late fusion
+
+**Next: Run 2** — lower LR to `1e-5`, increase WARMUP_RATIO to `0.2` to spread learning across all 3 epochs.
 
