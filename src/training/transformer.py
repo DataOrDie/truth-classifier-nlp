@@ -180,7 +180,7 @@ holdout_loader = DataLoader(holdout_ds, batch_size=BATCH_SIZE*2, shuffle=False,
 # Model
 # ============================================================
 print(f"\n[SECTION] Loading model: {MODEL_NAME}  [{_now()}]")
-model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME, num_labels=2)
+model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME, num_labels=2, torch_dtype=torch.float32)
 model.to(device)
 n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"  Parameters: {n_params:,}")
@@ -227,17 +227,22 @@ run = wandb.init(
 def train_epoch(model, loader, optimizer, scheduler, criterion) -> float:
     model.train()
     total_loss = 0.0
-    for inputs, labs in loader:
+    for batch_idx, (inputs, labs) in enumerate(loader):
         inputs = {k: v.to(device) for k, v in inputs.items()}
         labs   = labs.to(device)
         optimizer.zero_grad()
         with autocast("cuda", dtype=torch.bfloat16, enabled=USE_AMP):
-            loss = criterion(model(**inputs).logits, labs)
+            logits = model(**inputs).logits
+            loss   = criterion(logits, labs)
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         scheduler.step()
         total_loss += loss.item()
+        if batch_idx == 0:
+            print(f"    Batch 0 — logits dtype={logits.dtype}  labs dtype={labs.dtype}  loss={loss.item():.4f}")
+        if (batch_idx + 1) % 50 == 0:
+            print(f"    Batch {batch_idx+1}/{len(loader)}  avg_loss={total_loss/(batch_idx+1):.4f}")
     return total_loss / len(loader)
 
 
@@ -263,14 +268,20 @@ def evaluate(model, loader) -> tuple[float, np.ndarray, np.ndarray]:
 # Training loop — save best checkpoint by val macro_f1
 # ============================================================
 print(f"\n[SECTION] Training  [{_now()}]")
+print(f"  Model dtype     : {next(model.parameters()).dtype}")
+print(f"  loss_weights    : {loss_weights}")
+print(f"  Train batches   : {len(train_loader)}  Val batches: {len(val_loader)}")
 
 best_val_f1 = -1.0
 best_ckpt   = OUTPUT_DIR / f"{model_slug}-best.pt"
 
 for epoch in range(1, EPOCHS + 1):
-    _t         = time()
+    _t = time()
+    print(f"\n  --- Epoch {epoch}/{EPOCHS} ---  [{_now()}]")
     train_loss = train_epoch(model, train_loader, optimizer, scheduler, criterion)
+    print(f"  Train loss: {train_loss:.4f}  — starting val evaluation")
     val_loss, val_proba, val_labels = evaluate(model, val_loader)
+    print(f"  Val proba range: [{val_proba.min():.4f}, {val_proba.max():.4f}]  NaNs: {np.isnan(val_proba).sum()}")
 
     val_pred = (val_proba >= 0.5).astype(int)
     val_f1   = f1_score(val_labels, val_pred, average="macro", zero_division=0)
