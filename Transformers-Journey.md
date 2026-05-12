@@ -1375,3 +1375,18 @@ weighted avg       0.65      0.66      0.65      1790
 
 **Confirmed best Option A config: EPOCHS=3, FREEZE_EPOCHS=1 (Run 5)**
 
+**Next: Run 7 — Classifier dropout increase (`cls_dropout=0.3`)**
+
+**Changes from Run 5 (the confirmed best base):**
+- `EPOCHS = 3`, `FREEZE_EPOCHS = 1` — unchanged (R5 schedule)
+- `CLS_DROPOUT = 0.3` (from default ~0.1) — passed to `AutoModelForSequenceClassification.from_pretrained` via the `cls_dropout` config key
+- Everything else unchanged
+
+**Decision rationale:** R5 established the right training regime. The remaining overfitting signal — val F1 slightly below holdout, val loss already rising at epoch 3, and all models topping out ~0.62 — suggests the classifier head is memorizing the 716-sample val distribution. Increasing `cls_dropout` from ~0.1 to 0.3 adds direct regularization at the head during fine-tuning without changing any other dynamics. This is the standard next lever after epoch count is confirmed.
+
+**Expected behavior:**
+- Epoch 1 val F1 slightly lower (more dropout = noisier head-only training)
+- Epochs 2–3 val F1 should be more stable — higher dropout smooths the loss surface, potentially letting epoch 3 exceed 0.6129
+- Holdout gap to val should narrow (less overfitting at the head)
+- If 0.3 hurts, try 0.2 as a midpoint
+

@@ -83,8 +83,9 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_NAME    = "microsoft/deberta-v3-small"
 MAX_LENGTH    = 128
 BATCH_SIZE    = 16       # safe for 12 GB VRAM; bump to 32 on Kaggle T4 (16 GB)
-EPOCHS        = 5
+EPOCHS        = 3
 FREEZE_EPOCHS = 1        # freeze backbone for this many epochs; 0 to disable
+CLS_DROPOUT   = 0.3      # classifier head dropout (default ~0.1); higher = more regularization
 LR            = 2e-5     # head LR; encoder layers decay by LLRD_FACTOR per layer
 LLRD_FACTOR   = 0.9      # layer-wise LR decay multiplier
 WARMUP_RATIO  = 0.1
@@ -247,7 +248,9 @@ def _unfreeze_backbone(model) -> None:
 # Model
 # ============================================================
 print(f"\n[SECTION] Loading model: {MODEL_NAME}  [{_now()}]")
-model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME, num_labels=2, torch_dtype=torch.float32)
+model = AutoModelForSequenceClassification.from_pretrained(
+    MODEL_NAME, num_labels=2, cls_dropout=CLS_DROPOUT, torch_dtype=torch.float32
+)
 model.to(device)
 n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"  Parameters: {n_params:,}")
@@ -283,6 +286,7 @@ run = wandb.init(
         "batch_size":    BATCH_SIZE,
         "epochs":         EPOCHS,
         "freeze_epochs":  FREEZE_EPOCHS,
+        "cls_dropout":    CLS_DROPOUT,
         "lr":             LR,
         "warmup_ratio":   WARMUP_RATIO,
         "weight_decay":   WEIGHT_DECAY,
