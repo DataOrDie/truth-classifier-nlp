@@ -716,5 +716,186 @@ weighted avg       0.64      0.66      0.64      1790
 
 --------------------------------------
 
+--> Output Run 4** — Layer-wise LR decay (LLRD): head gets `LR=2e-5`, each encoder layer multiplied by `0.9` going down (layer 11 ≈ 1.8e-5, layer 0 ≈ 0.43e-5, embeddings ≈ 0.39e-5). No label smoothing. Linear warmup. `EPOCHS=3`.
+
+[SECTION] Training  [19:31:23]
+  Model dtype     : torch.float32
+  loss_weights    : tensor([1.4200, 0.7700], device='cuda:0')
+  Train batches   : 403  Val batches: 23
+
+  --- Epoch 1/3 ---  [19:31:23]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.6651
+    Batch 50/403  avg_loss=0.7041
+    Batch 100/403  avg_loss=0.6987
+    Batch 150/403  avg_loss=0.6954
+    Batch 200/403  avg_loss=0.6887
+    Batch 250/403  avg_loss=0.6833
+    Batch 300/403  avg_loss=0.6811
+    Batch 350/403  avg_loss=0.6767
+    Batch 400/403  avg_loss=0.6765
+  Train loss: 0.6766  — starting val evaluation
+  Val proba range: [0.2764, 0.6933]  NaNs: 0
+  Epoch 1/3  train_loss=0.6766  val_loss=0.6580  val_macro_f1=0.6145  val_roc_auc=0.6624  (29.1s)
+    New best val macro_f1=0.6145 — checkpoint saved
+
+  --- Epoch 2/3 ---  [19:31:53]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.6160
+    Batch 50/403  avg_loss=0.6300
+    Batch 100/403  avg_loss=0.6375
+    Batch 150/403  avg_loss=0.6351
+    Batch 200/403  avg_loss=0.6374
+    Batch 250/403  avg_loss=0.6356
+    Batch 300/403  avg_loss=0.6357
+    Batch 350/403  avg_loss=0.6324
+    Batch 400/403  avg_loss=0.6329
+  Train loss: 0.6334  — starting val evaluation
+  Val proba range: [0.1551, 0.9043]  NaNs: 0
+  Epoch 2/3  train_loss=0.6334  val_loss=0.6637  val_macro_f1=0.5931  val_roc_auc=0.6632  (28.8s)
+
+  --- Epoch 3/3 ---  [19:32:21]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.6594
+    Batch 50/403  avg_loss=0.5685
+    Batch 100/403  avg_loss=0.5801
+    Batch 150/403  avg_loss=0.5803
+    Batch 200/403  avg_loss=0.5794
+    Batch 250/403  avg_loss=0.5772
+    Batch 300/403  avg_loss=0.5733
+    Batch 350/403  avg_loss=0.5716
+    Batch 400/403  avg_loss=0.5758
+  Train loss: 0.5754  — starting val evaluation
+  Val proba range: [0.1025, 0.9738]  NaNs: 0
+  Epoch 3/3  train_loss=0.5754  val_loss=0.7104  val_macro_f1=0.5948  val_roc_auc=0.6593  (28.8s)
+
+[SECTION] Loading best checkpoint  [19:32:50]
+
+[SECTION] Threshold tuning on val set  [19:32:51]
+   threshold   macro_f1
+        0.20   0.3932
+        0.21   0.3932
+        0.22   0.3932
+        0.23   0.3932
+        0.24   0.3932
+        0.25   0.3932
+        0.26   0.3932
+        0.27   0.3932
+        0.28   0.3927
+        0.29   0.4012
+        0.30   0.4026
+        0.31   0.4136
+        0.32   0.4320
+        0.33   0.4488
+        0.34   0.4646
+        0.35   0.4839
+        0.36   0.5013
+        0.37   0.5221
+        0.38   0.5383
+        0.39   0.5470
+        0.40   0.5597
+        0.41   0.5696
+        0.42   0.5773
+        0.43   0.5935
+        0.44   0.5857
+        0.45   0.6013
+        0.46   0.6045
+        0.47   0.6083
+        0.48   0.6075
+        0.49   0.6099
+        0.50   0.6145  ←
+        0.51   0.6106
+        0.52   0.6102
+        0.53   0.6016
+        0.54   0.6032
+        0.55   0.6050
+        0.56   0.5922
+        0.57   0.5845
+        0.58   0.5667
+        0.59   0.5499
+        0.60   0.5488
+        0.61   0.5374
+        0.62   0.4855
+        0.63   0.4448
+        0.64   0.3986
+        0.65   0.3528
+        0.66   0.3023
+        0.67   0.2818
+        0.68   0.2700
+        0.69   0.2628
+        0.70   0.2603
+        0.71   0.2603
+        0.72   0.2603
+        0.73   0.2603
+        0.74   0.2603
+        0.75   0.2603
+        0.76   0.2603
+
+  Best threshold: 0.50  (val macro_f1=0.6145)
+
+[SECTION] Holdout evaluation  [19:32:51]
+  Threshold: 0.50
+
+Holdout results:
+  roc_auc: 0.6538
+  pr_auc: 0.7537
+  macro_f1: 0.6133
+  f1: 0.7319
+  precision: 0.7254
+  recall: 0.7386
+  accuracy: 0.6497
+  mcc: 0.2269
+  balanced_acc: 0.6125
+
+              precision    recall  f1-score   support
+
+           0       0.50      0.49      0.49       631
+           1       0.73      0.74      0.73      1159
+
+    accuracy                           0.65      1790
+   macro avg       0.61      0.61      0.61      1790
+weighted avg       0.65      0.65      0.65      1790
+
+Looking at all 4 runs together, the pattern is unmistakable:
+
+  ┌─────┬──────┬───────────────┬────────────┬────────────┬────────────┐
+  │ Run │  LR  │    Config     │ Ep1 val_f1 │ Holdout F1 │ Best epoch │
+  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
+  │ R1  │ 2e-5 │ baseline      │ 0.6128     │ 0.6127     │ 1          │
+  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
+  │ R2  │ 1e-5 │ lower LR      │ 0.5993     │ 0.6039     │ 1          │
+  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
+  │ R3  │ 3e-5 │ 1ep+cosine+LS │ 0.5993     │ 0.5851     │ 1          │
+  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
+  │ R4  │ 2e-5 │ +LLRD         │ 0.6145     │ 0.6133     │ 1          │
+  └─────┴──────┴───────────────┴────────────┴────────────┴────────────┘
+
+  Epoch 1 always wins. The model is absorbing all useful gradient signal in one pass on ~6,400 samples, then overfitting
+  noise. LR and LLRD tuning have improved epoch 1 quality marginally, but nothing has changed the fundamental dynamic.
+
+  The untried lever that directly addresses this: freeze-then-unfreeze (gradual unfreezing).
+
+  - Epoch 1: freeze the entire DeBERTa backbone, train only the classifier head (~1,500 params) → head adapts to pretrained
+  features without disturbing them
+  - Epochs 2–3: unfreeze everything, LLRD rates apply → backbone now fine-tunes from a warm, stable head, not from random
+  │ R1  │ 2e-5 │ baseline      │ 0.6128     │ 0.6127     │ 1          │
+  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
+  │ R2  │ 1e-5 │ lower LR      │ 0.5993     │ 0.6039     │ 1          │
+  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
+  │ R3  │ 3e-5 │ 1ep+cosine+LS │ 0.5993     │ 0.5851     │ 1          │
+  ├─────┼──────┼───────────────┼────────────┼────────────┼────────────┤
+  │ R4  │ 2e-5 │ +LLRD         │ 0.6145     │ 0.6133     │ 1          │
+  └─────┴──────┴───────────────┴────────────┴────────────┴────────────┘
+
+  Epoch 1 always wins. The model is absorbing all useful gradient signal in one pass on ~6,400 samples, then overfitting
+  noise. LR and LLRD tuning have improved epoch 1 quality marginally, but nothing has changed the fundamental dynamic.
+
+  The untried lever that directly addresses this: freeze-then-unfreeze (gradual unfreezing).
+
+  - Epoch 1: freeze the entire DeBERTa backbone, train only the classifier head (~1,500 params) → head adapts to pretrained
+  features without disturbing them
+  - Epochs 2–3: unfreeze everything, LLRD rates apply → backbone now fine-tunes from a warm, stable head, not from random
+  initialization
+
+  This is the standard small-data fix — it changes what is learned in each epoch, not just how fast. The hypothesis is that
+  epochs 2–3 currently degrade because the classifier and backbone are fighting each other simultaneously from the start;
+  separating those phases may let multi-epoch training actually help.
 
   
