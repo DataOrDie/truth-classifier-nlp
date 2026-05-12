@@ -875,6 +875,17 @@ weighted avg       0.66      0.63      0.64      1790
     LGBM: 0.6766
     CAT : 0.6740
 
+
+------------------------------------
+
+Update Stacking to use "all-mpnet-base-v2" embeddings
+
+<lastest results here>
+
+
+
+--------------------------------------
+
 Likely highest-leverage next moves (in order):
 
   Experiment: A
