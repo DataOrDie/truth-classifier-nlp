@@ -1581,3 +1581,24 @@ Option C is lower effort and exploits the error complementarity immediately: add
 
 Option B (hybrid) adds metadata features (speaker/party true-rate) directly into the transformer — higher ceiling but requires today's transformer_hybrid.py work.
 
+-----------------------------------------------------------------------
+
+**Hybrid Run 1 — Option B: DeBERTa [CLS] + metadata MLP (new script: `transformer_hybrid.py`)**
+
+**Changes from Option A R7 (the confirmed best Option A base):**
+- New script and architecture: DeBERTa encoder is no longer used as a sequence classifier directly; instead `AutoModel` extracts the `[CLS]` hidden state (768-dim) which is concatenated with the output of a metadata MLP before the final Linear
+- Metadata MLP: `(4→32→GELU→Dropout(0.1)→16→GELU)` — 4 fold-safe features computed from the train split only: `speaker_true_rate`, `subject_true_rate`, `party_true_rate`, `is_major_party`
+- Combined head: `concat(768, 16) → Dropout(0.3) → Linear(784→2)` — same `CLS_DROPOUT=0.3` validated in R7
+- `FREEZE_EPOCHS=1` and `EPOCHS=3` unchanged — confirmed best regime carried over
+- `LLRD_FACTOR=0.9`, `LR=2e-5`, `WARMUP_RATIO=0.1` unchanged
+- Phase 1 now trains `meta_mlp.*` + `classifier.*` (frozen encoder); Phase 2 unfreezes everything with LLRD — same two-phase transition as R5/R7
+
+**Decision rationale:** Option A saturated at ~0.621 with text alone. The stacking ensemble tells us exactly which signals text cannot capture: `speaker_primary_true_rate` was the single strongest individual predictor across all stacking runs, and `subject_primary_true_rate` was consistently top-5. These are credibility signals — knowing that a specific speaker has historically been truthful 80% of the time is evidence no amount of language modeling on the statement text can recover. The hybrid encodes this directly: the MLP routes speaker/subject/party credibility in parallel with the transformer's language signal, and the combined head learns to weight both. The freeze-then-unfreeze regime is preserved because it solved the root instability — a random head destabilizing the backbone — which applies equally here. Rate maps are built from the train split only before val/holdout are touched, so there is no leakage.
+
+**Expected behavior:**
+- Epoch 1: val_macro_f1 ≈ 0.39 and proba range ≈ [0.50, 0.51] — identical to R5/R7 epoch 1; encoder is frozen, only the meta_mlp + classifier train on frozen [CLS] features
+- Epoch 2: val F1 should jump similarly to R5 (~0.59–0.60) as the backbone unfreezes; the metadata path is already partially warm from epoch 1
+- Epoch 3: target val F1 > 0.615 — above Option A ceiling if metadata adds orthogonal signal
+- Holdout macro_f1 target: > 0.625 (clear beat of R7's 0.6205)
+- Class 0 recall should improve further — `speaker_true_rate` directly encodes per-speaker credibility, the main driver of true-statement recall in the stacking model
+- Threshold expected near 0.45 (same `CLS_DROPOUT=0.3` → similar calibration to R7)
