@@ -1602,3 +1602,242 @@ Option B (hybrid) adds metadata features (speaker/party true-rate) directly into
 - Holdout macro_f1 target: > 0.625 (clear beat of R7's 0.6205)
 - Class 0 recall should improve further — `speaker_true_rate` directly encodes per-speaker credibility, the main driver of true-statement recall in the stacking model
 - Threshold expected near 0.45 (same `CLS_DROPOUT=0.3` → similar calibration to R7)
+
+
+---> Output Hybrid Run 1
+[SECTION] Loading data  [14:04:46]
+  Rows: 8,950  |  Labels: {1: 5795, 0: 3155}
+
+[SECTION] Dataset features
+  Text input : 'statement'  token len min=2 median=17 p99=41 max=467
+  Meta used  : speaker_true_rate | subject_true_rate | party_true_rate | is_major_party
+  speaker               : 2634 unique  top-3=['barack-obama', 'donald-trump', 'hillary-clinton']
+  subject_primary       :  139 unique  top-3=['economy', 'health-care', 'candidates-biography']
+  party_affiliation     :   24 unique  top-3=['republican', 'democrat', 'none']
+  speaker_job           : 1090 unique  top-3=['President', 'U.S. Senator', 'Governor']
+  state_info            :   78 unique  top-3=['Texas', 'Florida', 'Wisconsin']
+
+[SECTION] Splitting data  [14:04:46]
+  Train: 6,444   Val: 716   Holdout: 1,790
+
+[SECTION] Computing metadata features (fold-safe from train)  [14:04:46]
+  Features : speaker_true_rate | subject_true_rate | party_true_rate | is_major_party
+  Shape    : (6444, 4)
+  Train mean : [0.348 0.352 0.353 0.952]
+  Train std  : [0.128 0.079 0.073 0.214]
+
+[SECTION] Tokenizing  [14:04:46]
+  Tokenized in 0.7s
+
+[SECTION] Loading model: microsoft/deberta-v3-small  [14:04:48]
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights: 100%|█████████████████████████████████████████████████████████████| 102/102 [00:00<00:00, 974.76it/s]
+[transformers] DebertaV2Model LOAD REPORT from: microsoft/deberta-v3-small
+Key                                     | Status     |  | 
+----------------------------------------+------------+--+-
+mask_predictions.dense.weight           | UNEXPECTED |  | 
+lm_predictions.lm_head.dense.bias       | UNEXPECTED |  | 
+mask_predictions.dense.bias             | UNEXPECTED |  | 
+mask_predictions.LayerNorm.bias         | UNEXPECTED |  | 
+lm_predictions.lm_head.dense.weight     | UNEXPECTED |  | 
+lm_predictions.lm_head.LayerNorm.weight | UNEXPECTED |  | 
+lm_predictions.lm_head.LayerNorm.bias   | UNEXPECTED |  | 
+mask_predictions.LayerNorm.weight       | UNEXPECTED |  | 
+lm_predictions.lm_head.bias             | UNEXPECTED |  | 
+mask_predictions.classifier.bias        | UNEXPECTED |  | 
+mask_predictions.classifier.weight      | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:   can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+  Parameters : 141,306,586
+  Architecture: DeBERTa(microsoft/deberta-v3-small) [CLS](768) + MetaMLP(4→32→16) → Linear(784→2)
+  Backbone frozen — frozen=141,304,320  trainable=2,266
+  Phase 1 optimizer — 8 param tensors  lr=2.0e-05
+
+[SECTION] Initializing W&B run
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from C:\Users\CmdrC\_netrc.
+wandb: Currently logged in as: marilyn-smartinez (team-data-or-die) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.25.1
+wandb: Run data is saved locally in C:\Users\CmdrC\Documents\MStanwood\truth-classifier-nlp\wandb\run-20260513_140449-v342g0tg
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run skilled-energy-14
+wandb:  View project at https://wandb.ai/team-data-or-die/truth-classifier-transformers
+wandb:  View run at https://wandb.ai/team-data-or-die/truth-classifier-transformers/runs/v342g0tg
+
+[SECTION] Training  [14:04:53]
+  Model dtype     : torch.float32
+  loss_weights    : tensor([1.4200, 0.7700], device='cuda:0')
+  Train batches   : 403  Val batches: 23
+
+  --- Epoch 1/3 ---  [14:04:53]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.8289
+    Batch 50/403  avg_loss=0.9944
+    Batch 100/403  avg_loss=0.9510
+    Batch 150/403  avg_loss=0.9098
+    Batch 200/403  avg_loss=0.8830
+    Batch 250/403  avg_loss=0.8628
+    Batch 300/403  avg_loss=0.8502
+    Batch 350/403  avg_loss=0.8361
+    Batch 400/403  avg_loss=0.8268
+  Train loss: 0.8261  — starting val evaluation
+  Val proba range: [0.3579, 0.3944]  NaNs: 0
+  Epoch 1/3  train_loss=0.8261  val_loss=0.7282  val_macro_f1=0.2603  val_roc_auc=0.5299  (9.5s)
+    New best val macro_f1=0.2603 — checkpoint saved
+
+  [Phase 2] Unfreezing backbone + rebuilding optimizer with LLRD
+  Backbone unfrozen — trainable=141,306,586
+  LLRD groups: 16  LR range: [9.57e-06, 2.00e-05]
+
+  --- Epoch 2/3 ---  [14:05:03]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.7369
+    Batch 50/403  avg_loss=0.7508
+    Batch 100/403  avg_loss=0.7433
+    Batch 150/403  avg_loss=0.7334
+    Batch 200/403  avg_loss=0.7240
+    Batch 250/403  avg_loss=0.7210
+    Batch 300/403  avg_loss=0.7208
+    Batch 350/403  avg_loss=0.7186
+    Batch 400/403  avg_loss=0.7178
+  Train loss: 0.7180  — starting val evaluation
+  Val proba range: [0.2044, 0.7094]  NaNs: 0
+  Epoch 2/3  train_loss=0.7180  val_loss=0.6556  val_macro_f1=0.5903  val_roc_auc=0.6546  (28.7s)
+    New best val macro_f1=0.5903 — checkpoint saved
+
+  --- Epoch 3/3 ---  [14:05:32]
+    Batch 0 — logits dtype=torch.float32  labs dtype=torch.int64  loss=0.6402
+    Batch 50/403  avg_loss=0.6663
+    Batch 100/403  avg_loss=0.6694
+    Batch 150/403  avg_loss=0.6601
+    Batch 200/403  avg_loss=0.6570
+    Batch 250/403  avg_loss=0.6623
+    Batch 300/403  avg_loss=0.6635
+    Batch 350/403  avg_loss=0.6642
+    Batch 400/403  avg_loss=0.6624
+  Train loss: 0.6635  — starting val evaluation
+  Val proba range: [0.1393, 0.8473]  NaNs: 0
+  Epoch 3/3  train_loss=0.6635  val_loss=0.6577  val_macro_f1=0.5984  val_roc_auc=0.6601  (28.8s)
+    New best val macro_f1=0.5984 — checkpoint saved
+
+[SECTION] Loading best checkpoint  [14:06:01]
+
+[SECTION] Threshold tuning on val set  [14:06:02]
+   threshold   macro_f1
+        0.20   0.4465
+        0.21   0.4605
+        0.22   0.4654
+        0.23   0.4881
+        0.24   0.4973
+        0.25   0.5187
+        0.26   0.5313
+        0.27   0.5430
+        0.28   0.5541
+        0.29   0.5674
+        0.30   0.5722
+        0.31   0.5751
+        0.32   0.5894
+        0.33   0.5961
+        0.34   0.6023
+        0.35   0.6081  ←
+        0.36   0.5980
+        0.37   0.6032
+        0.38   0.5972
+        0.39   0.5974
+        0.40   0.5935
+        0.41   0.6028
+        0.42   0.5967
+        0.43   0.6008
+        0.44   0.5975
+        0.45   0.5942
+        0.46   0.5955
+        0.47   0.5951
+        0.48   0.5962
+        0.49   0.5907
+        0.50   0.5984
+        0.51   0.5944
+        0.52   0.5968
+        0.53   0.5927
+        0.54   0.5878
+        0.55   0.5853
+        0.56   0.5857
+        0.57   0.5872
+        0.58   0.5840
+        0.59   0.5765
+        0.60   0.5689
+        0.61   0.5706
+        0.62   0.5598
+        0.63   0.5572
+        0.64   0.5433
+        0.65   0.5500
+        0.66   0.5438
+        0.67   0.5282
+        0.68   0.5183
+        0.69   0.4978
+        0.70   0.4758
+        0.71   0.4578
+        0.72   0.4454
+        0.73   0.4348
+        0.74   0.4106
+        0.75   0.3885
+        0.76   0.3609
+
+  Best threshold: 0.35  (val macro_f1=0.6081)
+
+[SECTION] Holdout evaluation  [14:06:02]
+  Threshold: 0.35
+
+Holdout results:
+  roc_auc: 0.6706
+  pr_auc: 0.7764
+  macro_f1: 0.6100
+  f1: 0.7627
+  precision: 0.7132
+  recall: 0.8197
+  accuracy: 0.6698
+  mcc: 0.2346
+  balanced_acc: 0.6071
+
+              precision    recall  f1-score   support
+
+           0       0.54      0.39      0.46       631
+           1       0.71      0.82      0.76      1159
+
+    accuracy                           0.67      1790
+   macro avg       0.63      0.61      0.61      1790
+weighted avg       0.65      0.67      0.66      1790
+
+**Script config at time of Hybrid Run 1**
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Model | `microsoft/deberta-v3-small` via `AutoModel` | Raw [CLS] output — no pooler layer |
+| Architecture | DeBERTa [CLS](768) + MetaMLP(4→32→16) → Linear(784→2) | — |
+| EPOCHS | 3 | — |
+| FREEZE_EPOCHS | 1 | Backbone frozen for epoch 1 |
+| CLS_DROPOUT | 0.3 | Applied at concat before classifier |
+| LR | 2e-5 | LLRD base (Phase 2) |
+| LLRD_FACTOR | 0.9 | — |
+| WARMUP_RATIO | 0.1 | Per-phase |
+| Threshold tuning | On val set | Best threshold: 0.35 |
+
+**Key observations — frozen epoch failed; holdout below Option A baseline**
+
+| Metric | A-R7 (text-only) | HR1 (hybrid, freeze) |
+|--------|-----------------|----------------------|
+| Ep1 val_macro_f1 | 0.3932 | **0.2603** |
+| Ep1 val proba range | [0.50, 0.51] | **[0.36, 0.39]** |
+| Best epoch | 3 | 3 |
+| Tuned val macro_f1 | 0.6198 | 0.6081 |
+| Holdout macro_f1 | 0.6205 | **0.6100** |
+| Holdout ROC-AUC | 0.6700 | 0.6706 |
+| Class 0 recall | **0.55** | 0.39 |
+| Balanced accuracy | **0.6237** | 0.6071 |
+| Best threshold | 0.45 | 0.35 |
+
+- **Frozen epoch produced the wrong failure mode**: In Option A, `AutoModelForSequenceClassification` has a pooler layer (768→768, tanh) with ~590K trainable params — enough gradient signal to warm the head meaningfully in one frozen epoch. In the hybrid, `AutoModel` has no pooler; the frozen phase trains only `meta_mlp` + `classifier` = **2,266 params**. With the [CLS] vector fixed at random-init scale and only 2K params receiving gradients, the random classifier initialized all probas at ~0.37 — predicting everything as class 0 — and had no mechanism to correct this. Val F1 of 0.2603 (random-class-0 baseline) confirms total failure.
+- **Epoch 2–3 were spent partly recovering from epoch 1 rather than building on a warm head**: train loss started at 0.7369 in epoch 2 vs 0.7023 in R5; val F1 trajectory (0.5903 → 0.5984) lags behind R5 (0.5961 → 0.6129) throughout, never catching up in 3 epochs
+- **Train loss 0.6635 at epoch 3 vs 0.6351 (R7)**: the extra 784-dim path adds genuine training difficulty; the hybrid is learning more but hasn't resolved it yet
+- **Holdout ROC-AUC 0.6706** — slightly above R7 (0.6700) despite lower F1; the ranking signal is there, the decision boundary is off
+- **Class 0 recall collapsed to 0.39** (R7 had 0.55): the metadata true-rate features, which directly encode per-speaker credibility, should have helped class 0 most — they didn't because Phase 1 left the meta MLP in a bad initialization that Phase 2 couldn't fully recover
+- **Root cause**: the freeze-then-unfreeze strategy is tied to Option A's `AutoModelForSequenceClassification` architecture (590K pooler params) and does not transfer to a custom `AutoModel`-based hybrid with ~2K head params
+
