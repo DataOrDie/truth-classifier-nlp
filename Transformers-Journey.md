@@ -1841,3 +1841,19 @@ weighted avg       0.65      0.67      0.66      1790
 - **Class 0 recall collapsed to 0.39** (R7 had 0.55): the metadata true-rate features, which directly encode per-speaker credibility, should have helped class 0 most — they didn't because Phase 1 left the meta MLP in a bad initialization that Phase 2 couldn't fully recover
 - **Root cause**: the freeze-then-unfreeze strategy is tied to Option A's `AutoModelForSequenceClassification` architecture (590K pooler params) and does not transfer to a custom `AutoModel`-based hybrid with ~2K head params
 
+**Next: Hybrid Run 2 — remove freeze, LLRD from epoch 1 (`FREEZE_EPOCHS=0`)**
+
+**Changes from HR1:**
+- `FREEZE_EPOCHS = 0` — no frozen epoch; LLRD active from batch 1
+- Training becomes a single-phase run: all layers train throughout, head at `LR=2e-5`, DeBERTa layers decaying to ~4e-6 at the bottom
+- `EPOCHS = 3` unchanged
+- All other config unchanged
+
+**Decision rationale:** LLRD already provides the stabilisation that freeze-then-unfreeze was designed for: lower layers train 3–5× slower than the head, so the backbone fine-tunes gradually while the head and meta_mlp converge first in practice. The frozen epoch only adds value when there are enough head params to warm meaningfully — 590K in Option A vs 2K in the hybrid. With 2K params and no pooler, the frozen epoch creates a destructive initialisation that the following epochs cannot fully undo in 3 total passes. Removing it lets the meta_mlp and classifier receive clean gradient signal from epoch 1, guided by both the text [CLS] and the metadata path simultaneously.
+
+**Expected behavior:**
+- Epoch 1: train loss should open near 0.8–0.9 (random heads, class-weighted loss) and descend continuously; val proba range should spread across [0.3, 0.7] by end of epoch — no frozen plateau
+- Val F1 trajectory should mirror Option A Run 4 (LLRD, no freeze): epoch 1 ≈ 0.60–0.61, epochs 2–3 either holding or gently improving
+- Holdout macro_f1 target: ≥ 0.620 (matching Option A), with upside to 0.625+ if metadata adds orthogonal signal
+- Class 0 recall should recover toward R7's 0.55 — `speaker_true_rate` feeds the meta MLP directly, which now trains from the first batch alongside the text path
+
