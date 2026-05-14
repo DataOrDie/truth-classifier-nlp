@@ -513,22 +513,28 @@ model_name       = "stacking"
 create_kaggle_csv = True
 
 # ---- Late fusion: add transformer k-fold OOF as a 5th base model ----
-# Run transformer_kfold_extract.py first to generate these files.
-# Set all three paths to enable; leave as None to run standard stacking.
-_KFOLD_DIR = project_root / "models" / "transformer_kfold"
-TRANSFORMER_OOF_PATH  = _KFOLD_DIR / "deberta-v3-small-kfold-oof.csv"
-TRANSFORMER_HO_PATH   = _KFOLD_DIR / "ho_proba.npy"
-TRANSFORMER_TEST_PATH = _KFOLD_DIR / "test_proba.npy"
+# Base model artifacts take priority over small when both exist.
+# Run transformer_kfold_base_extract.py (or transformer_kfold_extract.py) first.
+def _find_transformer_artifacts(root: Path):
+    """Return (dir, oof_filename, variant_label) for best available transformer artifacts."""
+    candidates = [
+        (root / "models" / "transformer_kfold_base",  "deberta-v3-base-kfold-oof.csv",  "deberta-v3-base"),
+        (root / "models" / "transformer_kfold",       "deberta-v3-small-kfold-oof.csv", "deberta-v3-small"),
+    ]
+    for d, oof_name, label in candidates:
+        if (d / oof_name).exists() and (d / "ho_proba.npy").exists() and (d / "test_proba.npy").exists():
+            return d, oof_name, label
+    return None, None, None
 
-use_transformer_fusion = (
-    TRANSFORMER_OOF_PATH.exists()
-    and TRANSFORMER_HO_PATH.exists()
-    and TRANSFORMER_TEST_PATH.exists()
-)
+_KFOLD_DIR, _TRANS_OOF_NAME, _TRANS_VARIANT = _find_transformer_artifacts(project_root)
+use_transformer_fusion = _KFOLD_DIR is not None
 if use_transformer_fusion:
-    print(f"  [Late fusion] Transformer k-fold artifacts found — adding as 5th base model")
+    TRANSFORMER_OOF_PATH  = _KFOLD_DIR / _TRANS_OOF_NAME
+    TRANSFORMER_HO_PATH   = _KFOLD_DIR / "ho_proba.npy"
+    TRANSFORMER_TEST_PATH = _KFOLD_DIR / "test_proba.npy"
+    print(f"  [Late fusion] Transformer artifacts found (variant={_TRANS_VARIANT}) — adding as 5th base model")
 else:
-    print(f"  [Late fusion] Disabled — run transformer_kfold_extract.py to enable")
+    print(f"  [Late fusion] Disabled — run transformer_kfold_base_extract.py to enable")
 
 enable_threshold_tuning = True
 overwrite_threshold     = True
