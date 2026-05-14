@@ -94,7 +94,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_NAME    = "microsoft/deberta-v3-small"
 MAX_LENGTH    = 128    # prefix adds ~12 tokens; p99 statement length is 41 — still comfortable
 BATCH_SIZE    = 16
-EPOCHS        = 5
+EPOCHS        = 3      # sweet spot confirmed: ep3 is best, ep4-5 overfit
 FREEZE_EPOCHS = 0      # no freeze — formatted input shifts CLS repr; freeze wastes epoch 1
 CLS_DROPOUT   = 0.3
 LR            = 2e-5
@@ -326,10 +326,10 @@ else:
     p2_steps  = len(train_loader) * EPOCHS
     p2_warmup = int(p2_steps * WARMUP_RATIO)
     param_groups = _build_llrd_param_groups(model, LR, LLRD_FACTOR, WEIGHT_DECAY)
-    optimizer    = AdamW(param_groups)
-    scheduler    = get_linear_schedule_with_warmup(optimizer, p2_warmup, p2_steps)
     _lr_min = min(g["lr"] for g in param_groups)
     _lr_max = max(g["lr"] for g in param_groups)
+    optimizer    = AdamW(param_groups)
+    scheduler    = get_linear_schedule_with_warmup(optimizer, p2_warmup, p2_steps)
     print(f"  LLRD optimizer (no freeze) — {len(param_groups)} groups  LR range: [{_lr_min:.2e}, {_lr_max:.2e}]")
 
 
