@@ -81,7 +81,7 @@ MAX_LENGTH  = 128
 BATCH_SIZE  = 4
 GRAD_ACCUM  = 4     # effective batch = 16
 EPOCHS      = 2
-LR          = 2e-4
+LR          = 5e-5
 WEIGHT_DECAY = 0.01
 WARMUP_RATIO = 0.1
 K_FOLDS     = 5
@@ -229,6 +229,18 @@ def _build_model() -> nn.Module:
     )
     model = get_peft_model(model, lora_cfg)
     model.print_trainable_parameters()
+
+    # Near-zero init for the classification head. The default random init
+    # produces large logits against Mistral's unnormalized hidden states,
+    # causing batch-0 losses of 10-17 that destabilize the LoRA adapters
+    # in the first epoch. std=0.01 keeps initial loss near log(2) while
+    # leaving weights non-zero so LoRA params still receive gradients.
+    with torch.no_grad():
+        for name, param in model.named_parameters():
+            if "score" in name and param.requires_grad:
+                nn.init.normal_(param, mean=0.0, std=0.01)
+                break
+
     return model
 
 
