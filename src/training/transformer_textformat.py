@@ -94,8 +94,8 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_NAME    = "microsoft/deberta-v3-small"
 MAX_LENGTH    = 128    # prefix adds ~12 tokens; p99 statement length is 41 — still comfortable
 BATCH_SIZE    = 16
-EPOCHS        = 3
-FREEZE_EPOCHS = 1      # freeze backbone epoch 1, full LLRD from epoch 2
+EPOCHS        = 5
+FREEZE_EPOCHS = 0      # no freeze — formatted input shifts CLS repr; freeze wastes epoch 1
 CLS_DROPOUT   = 0.3
 LR            = 2e-5
 LLRD_FACTOR   = 0.9
