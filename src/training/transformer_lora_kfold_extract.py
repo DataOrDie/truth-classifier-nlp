@@ -10,6 +10,7 @@ These files are auto-detected by stacking.py (LoRA > base > small priority).
 Expected runtime: ~20–30 min on RTX 5070.
 """
 from pathlib import Path
+import gc
 import sys
 from time import time
 
@@ -178,7 +179,7 @@ for fold_k in range(1, K_FOLDS + 1):
         MODEL_NAME,
         num_labels=2,
         quantization_config=bnb_config,
-        device_map="auto",
+        device_map={"": 0},
         pad_token_id=tokenizer.eos_token_id,
     )
     model = PeftModel.from_pretrained(base_model, str(adapter_dir))
@@ -188,6 +189,8 @@ for fold_k in range(1, K_FOLDS + 1):
     print(f"  Fold {fold_k} done in {time()-_t:.1f}s")
 
     del model, base_model
+    gc.collect()
+    torch.cuda.synchronize()
     torch.cuda.empty_cache()
 
 
