@@ -512,6 +512,24 @@ THRESHOLD        = 0.5
 model_name       = "stacking"
 create_kaggle_csv = True
 
+# ---- Late fusion: add transformer k-fold OOF as a 5th base model ----
+# Run transformer_kfold_extract.py first to generate these files.
+# Set all three paths to enable; leave as None to run standard stacking.
+_KFOLD_DIR = project_root / "models" / "transformer_kfold"
+TRANSFORMER_OOF_PATH  = _KFOLD_DIR / "deberta-v3-small-kfold-oof.csv"
+TRANSFORMER_HO_PATH   = _KFOLD_DIR / "ho_proba.npy"
+TRANSFORMER_TEST_PATH = _KFOLD_DIR / "test_proba.npy"
+
+use_transformer_fusion = (
+    TRANSFORMER_OOF_PATH.exists()
+    and TRANSFORMER_HO_PATH.exists()
+    and TRANSFORMER_TEST_PATH.exists()
+)
+if use_transformer_fusion:
+    print(f"  [Late fusion] Transformer k-fold artifacts found — adding as 5th base model")
+else:
+    print(f"  [Late fusion] Disabled — run transformer_kfold_extract.py to enable")
+
 enable_threshold_tuning = True
 overwrite_threshold     = True
 THRESHOLD_METRIC        = "macro_f1"
@@ -546,7 +564,7 @@ BASE_CAT_HP = dict(iterations=300, learning_rate=0.03, depth=4, l2_leaf_reg=5,
 # No class_weight — the base probas already encode the imbalance signal.
 META_LR_HP = dict(C=0.1, penalty="l2", max_iter=1000, solver="lbfgs", random_state=42)
 
-BASE_NAMES = ["xgb", "rfc", "lgbm", "cat"]
+BASE_NAMES = ["xgb", "rfc", "lgbm", "cat"] + (["transformer"] if use_transformer_fusion else [])
 
 
 # -----------------------------------------------------------------------------
@@ -721,19 +739,36 @@ for k in ["roc_auc_avg", "macro_f1_avg", "roc_auc_xgb", "roc_auc_rfc", "roc_auc_
 
 
 # -----------------------------------------------------------------------------
+# Late fusion — load transformer OOF and align to trainval row order
+# -----------------------------------------------------------------------------
+if use_transformer_fusion:
+    print(f"\n[SECTION] Loading transformer OOF  [{_now()}]")
+    _trans_oof_df   = pd.read_csv(TRANSFORMER_OOF_PATH)
+    _idx_to_proba   = dict(zip(_trans_oof_df["idx"].astype(int),
+                                _trans_oof_df["oof_proba"]))
+    oof_transformer = np.array([_idx_to_proba[i] for i in X_trainval.index],
+                                dtype=np.float64)
+    print(f"  Loaded {len(_trans_oof_df):,} OOF rows  "
+          f"range=[{oof_transformer.min():.3f}, {oof_transformer.max():.3f}]")
+    wandb.log({"transformer_oof/roc_auc":
+               roc_auc_score(y_trainval, oof_transformer)})
+
+
+# -----------------------------------------------------------------------------
 # Train meta-LR on full stacked OOF
 # -----------------------------------------------------------------------------
 print(f"\n[SECTION] Training meta-LR on stacked OOF  [{_now()}]")
-meta_X_train = np.column_stack([oof_xgb, oof_rfc, oof_lgbm, oof_cat])
+_oof_cols = [oof_xgb, oof_rfc, oof_lgbm, oof_cat]
+if use_transformer_fusion:
+    _oof_cols.append(oof_transformer)
+meta_X_train = np.column_stack(_oof_cols)
 meta_lr = LogisticRegression(**META_LR_HP)
 meta_lr.fit(meta_X_train, y_trainval)
 
 meta_coefs = dict(zip(BASE_NAMES, meta_lr.coef_[0].tolist()))
 print(f"  Meta-LR coefficients: {meta_coefs}")
-wandb.log({"meta/coef_xgb":  meta_coefs["xgb"],
-           "meta/coef_rfc":  meta_coefs["rfc"],
-           "meta/coef_lgbm": meta_coefs["lgbm"],
-           "meta/coef_cat":  meta_coefs["cat"]})
+_coef_log = {f"meta/coef_{n}": meta_coefs[n] for n in BASE_NAMES}
+wandb.log(_coef_log)
 
 
 # -----------------------------------------------------------------------------
@@ -829,7 +864,15 @@ h_rfc  = final_rfc.predict_proba(X_holdout_final)[:, 1]
 h_lgbm = final_lgbm.predict_proba(X_holdout_final)[:, 1]
 h_cat  = final_cat.predict_proba(X_holdout_final)[:, 1]
 
-meta_X_holdout = np.column_stack([h_xgb, h_rfc, h_lgbm, h_cat])
+_ho_cols = [h_xgb, h_rfc, h_lgbm, h_cat]
+if use_transformer_fusion:
+    _ho_idx_kfold    = np.load(_KFOLD_DIR / "ho_idx.npy")
+    _ho_trans_lookup = dict(zip(_ho_idx_kfold.tolist(),
+                                np.load(TRANSFORMER_HO_PATH).tolist()))
+    _h_transformer   = np.array([_ho_trans_lookup[i] for i in X_holdout.index])
+    _ho_cols.append(_h_transformer)
+    print(f"  Transformer holdout range=[{_h_transformer.min():.3f}, {_h_transformer.max():.3f}]")
+meta_X_holdout = np.column_stack(_ho_cols)
 y_proba = meta_lr.predict_proba(meta_X_holdout)[:, 1]
 y_pred  = (y_proba >= THRESHOLD).astype(int)
 
@@ -1022,7 +1065,10 @@ if create_kaggle_csv:
     t_lgbm = final_lgbm.predict_proba(X_test)[:, 1]
     t_cat  = final_cat.predict_proba(X_test)[:, 1]
 
-    meta_X_test = np.column_stack([t_xgb, t_rfc, t_lgbm, t_cat])
+    _test_cols = [t_xgb, t_rfc, t_lgbm, t_cat]
+    if use_transformer_fusion:
+        _test_cols.append(np.load(TRANSFORMER_TEST_PATH))
+    meta_X_test = np.column_stack(_test_cols)
     test_proba  = meta_lr.predict_proba(meta_X_test)[:, 1]
     test_pred   = (test_proba >= THRESHOLD).astype(int)
 
