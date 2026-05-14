@@ -429,7 +429,6 @@ for epoch in range(1, EPOCHS + 1):
         _lr_max = max(g["lr"] for g in param_groups)
         scheduler    = get_linear_schedule_with_warmup(optimizer, p2_warmup, p2_steps)
         print(f"  LLRD groups: {len(param_groups)}  LR range: [{_lr_min:.2e}, {_lr_max:.2e}]")
-        p1_steps = p1_steps  # suppress undefined-var warning for no-freeze path
 
     print(f"\n  --- Epoch {epoch}/{EPOCHS} ---  [{_now()}]")
     train_loss = train_epoch(model, train_loader, optimizer, scheduler, criterion)
