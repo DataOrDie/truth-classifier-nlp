@@ -518,8 +518,9 @@ create_kaggle_csv = True
 def _find_transformer_artifacts(root: Path):
     """Return (dir, oof_filename, variant_label) for best available transformer artifacts."""
     candidates = [
-        (root / "models" / "transformer_kfold_base",  "deberta-v3-base-kfold-oof.csv",  "deberta-v3-base"),
-        (root / "models" / "transformer_kfold",       "deberta-v3-small-kfold-oof.csv", "deberta-v3-small"),
+        (root / "models" / "transformer_lora_kfold",  "mistral-7b-lora-kfold-oof.csv",  "mistral-7b-lora"),
+        (root / "models" / "transformer_kfold_base",  "deberta-v3-base-kfold-oof.csv",   "deberta-v3-base"),
+        (root / "models" / "transformer_kfold",       "deberta-v3-small-kfold-oof.csv",  "deberta-v3-small"),
     ]
     for d, oof_name, label in candidates:
         if (d / oof_name).exists() and (d / "ho_proba.npy").exists() and (d / "test_proba.npy").exists():
