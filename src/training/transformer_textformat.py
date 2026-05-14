@@ -310,16 +310,27 @@ loss_weights = torch.tensor(CLASS_WEIGHTS, dtype=torch.float32).to(device)
 criterion    = nn.CrossEntropyLoss(weight=loss_weights)
 
 if FREEZE_EPOCHS > 0:
+    # Phase 1: frozen backbone, train classifier head only
     _freeze_backbone(model)
-p1_steps  = len(train_loader) * max(FREEZE_EPOCHS, 1)
-p1_warmup = int(p1_steps * WARMUP_RATIO)
-p1_params = [p for p in model.parameters() if p.requires_grad]
-optimizer = AdamW(p1_params, lr=LR, weight_decay=WEIGHT_DECAY)
-scheduler = get_linear_schedule_with_warmup(optimizer, p1_warmup, p1_steps)
-print(f"  Phase 1 optimizer — {len(p1_params)} param tensors  lr={LR:.1e}")
-
-p2_steps  = len(train_loader) * max(EPOCHS - FREEZE_EPOCHS, 0)
-p2_warmup = int(p2_steps * WARMUP_RATIO)
+    p1_steps  = len(train_loader) * FREEZE_EPOCHS
+    p1_warmup = int(p1_steps * WARMUP_RATIO)
+    p1_params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = AdamW(p1_params, lr=LR, weight_decay=WEIGHT_DECAY)
+    scheduler = get_linear_schedule_with_warmup(optimizer, p1_warmup, p1_steps)
+    print(f"  Phase 1 optimizer (frozen) — {len(p1_params)} param tensors  lr={LR:.1e}")
+    # Phase 2 vars (built lazily at epoch FREEZE_EPOCHS+1)
+    p2_steps  = len(train_loader) * (EPOCHS - FREEZE_EPOCHS)
+    p2_warmup = int(p2_steps * WARMUP_RATIO)
+else:
+    # No freeze — start directly with full LLRD over all epochs
+    p2_steps  = len(train_loader) * EPOCHS
+    p2_warmup = int(p2_steps * WARMUP_RATIO)
+    param_groups = _build_llrd_param_groups(model, LR, LLRD_FACTOR, WEIGHT_DECAY)
+    optimizer    = AdamW(param_groups)
+    scheduler    = get_linear_schedule_with_warmup(optimizer, p2_warmup, p2_steps)
+    _lr_min = min(g["lr"] for g in param_groups)
+    _lr_max = max(g["lr"] for g in param_groups)
+    print(f"  LLRD optimizer (no freeze) — {len(param_groups)} groups  LR range: [{_lr_min:.2e}, {_lr_max:.2e}]")
 
 
 # ============================================================
@@ -418,6 +429,7 @@ for epoch in range(1, EPOCHS + 1):
         _lr_max = max(g["lr"] for g in param_groups)
         scheduler    = get_linear_schedule_with_warmup(optimizer, p2_warmup, p2_steps)
         print(f"  LLRD groups: {len(param_groups)}  LR range: [{_lr_min:.2e}, {_lr_max:.2e}]")
+        p1_steps = p1_steps  # suppress undefined-var warning for no-freeze path
 
     print(f"\n  --- Epoch {epoch}/{EPOCHS} ---  [{_now()}]")
     train_loss = train_epoch(model, train_loader, optimizer, scheduler, criterion)
