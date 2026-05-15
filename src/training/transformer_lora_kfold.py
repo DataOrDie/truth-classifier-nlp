@@ -17,6 +17,7 @@ Install (one-time):
 """
 from datetime import datetime
 from pathlib import Path
+import gc
 import sys
 from time import time
 
@@ -212,7 +213,7 @@ def _build_model() -> nn.Module:
         MODEL_NAME,
         num_labels=2,
         quantization_config=bnb_config,
-        device_map="auto",
+        device_map={"": 0},
         pad_token_id=tokenizer.eos_token_id,
     )
     model.config.use_cache = False
@@ -463,6 +464,7 @@ for fold_k, (tr_rel, val_rel) in enumerate(skf.split(tv_idx, tv_labels)):
         print(f"  Test inference done ({len(test_texts):,} rows)")
 
     del model, optimizer, scheduler, best_state
+    gc.collect()
     torch.cuda.empty_cache()
     print(f"  GPU memory cleared")
 
