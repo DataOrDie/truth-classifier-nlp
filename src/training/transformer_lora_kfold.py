@@ -227,6 +227,7 @@ def _build_model() -> nn.Module:
         lora_dropout=LORA_DROPOUT,
         bias="none",
         task_type=TaskType.SEQ_CLS,
+        modules_to_save=["score"],
     )
     model = get_peft_model(model, lora_cfg)
     model.print_trainable_parameters()

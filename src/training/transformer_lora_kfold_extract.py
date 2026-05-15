@@ -184,6 +184,21 @@ for fold_k in range(1, K_FOLDS + 1):
     )
     model = PeftModel.from_pretrained(base_model, str(adapter_dir))
 
+    # The PEFT adapter does not include score.weight — load it from the fold checkpoint.
+    best_ckpt = MODEL_DIR / f"fold{fold_k}-best.pt"
+    if best_ckpt.exists():
+        ckpt = torch.load(best_ckpt, map_location="cpu", weights_only=True)
+        score_key = next((k for k in ckpt if "score" in k), None)
+        if score_key:
+            target = model.base_model.model.score.weight
+            with torch.no_grad():
+                target.data.copy_(ckpt[score_key].to(device=target.device, dtype=target.dtype))
+            print(f"    Score head loaded from {best_ckpt.name}  (key: {score_key})")
+        else:
+            print(f"    WARNING: no score key in {best_ckpt.name} — random score head used")
+    else:
+        print(f"    WARNING: {best_ckpt.name} not found — random score head used")
+
     ho_proba_folds.append(infer_proba(model, ho_loader))
     test_proba_folds.append(infer_proba(model, test_loader))
     print(f"  Fold {fold_k} done in {time()-_t:.1f}s")
