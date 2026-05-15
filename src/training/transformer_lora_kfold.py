@@ -81,7 +81,7 @@ MODEL_NAME  = "mistralai/Mistral-7B-v0.1"
 MAX_LENGTH  = 128
 BATCH_SIZE  = 4
 GRAD_ACCUM  = 4     # effective batch = 16
-EPOCHS      = 2
+EPOCHS      = 3
 LR          = 5e-5
 WEIGHT_DECAY = 0.01
 WARMUP_RATIO = 0.1
@@ -98,7 +98,7 @@ THRESHOLD     = 0.5
 SEED          = 42
 
 create_kaggle_csv = True
-model_slug        = "mistral-7b-lora-kfold"
+model_slug        = "mistral-7b-lora3-kfold"
 
 NUM_WORKERS = 0 if sys.platform == "win32" else 2
 
@@ -384,6 +384,7 @@ for fold_k, (tr_rel, val_rel) in enumerate(skf.split(tv_idx, tv_labels)):
                               num_workers=NUM_WORKERS)
 
     # Load fresh quantized model + LoRA for this fold
+    torch.manual_seed(SEED + fold_k)
     print(f"  Loading model ({MODEL_NAME})...")
     _t0    = time()
     model  = _build_model()
