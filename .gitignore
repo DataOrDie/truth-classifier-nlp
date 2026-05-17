@@ -50,6 +50,7 @@ checkpoints/
 artifacts/
 outputs/
 submissions/
+experiments/
 
 # Large data artifacts (keep source CSVs in data/ tracked)
 *.parquet
