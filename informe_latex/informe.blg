@@ -1,0 +1,51 @@
+This is BibTeX, Version 0.99e
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: informe.aux
+Reallocating 'name_of_file' (item size: 1) to 9 items.
+The style file: unsrtnat.bst
+Reallocating 'name_of_file' (item size: 1) to 11 items.
+Database file #1: references.bib
+Warning--entry type for "pandas" isn't style-file defined
+--line 25 of file references.bib
+You've used 18 entries,
+            2481 wiz_defined-function locations,
+            627 strings with 6338 characters,
+and the built_in function-call counts, 4905 in all, are:
+= -- 436
+> -- 134
+< -- 18
++ -- 76
+- -- 38
+* -- 215
+:= -- 759
+add.period$ -- 72
+call.type$ -- 18
+change.case$ -- 36
+chr.to.int$ -- 16
+cite$ -- 18
+duplicate$ -- 260
+empty$ -- 549
+format.name$ -- 58
+if$ -- 1081
+int.to.chr$ -- 3
+int.to.str$ -- 19
+missing$ -- 1
+newline$ -- 116
+num.names$ -- 54
+pop$ -- 216
+preamble$ -- 1
+purify$ -- 18
+quote$ -- 0
+skip$ -- 196
+stack$ -- 0
+substring$ -- 36
+swap$ -- 40
+text.length$ -- 0
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 126
+warning$ -- 0
+while$ -- 36
+width$ -- 0
+write$ -- 259
+(There was 1 warning)
