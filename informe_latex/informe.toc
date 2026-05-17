@@ -1,0 +1,14 @@
+\babel@toc {spanish}{}\relax 
+\contentsline {section}{\numberline {1}Introducción}{2}{section.1}%
+\contentsline {section}{\numberline {2}Descripción del problema}{2}{section.2}%
+\contentsline {section}{\numberline {3}Descripción del conjunto de datos}{2}{section.3}%
+\contentsline {section}{\numberline {4}Descripción de tareas comunes}{4}{section.4}%
+\contentsline {section}{\numberline {5}Evaluación}{6}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Modelos evaluados}{6}{subsection.5.1}%
+\contentsline {subsubsection}{\numberline {5.1.1}Modelos lineales}{6}{subsubsection.5.1.1}%
+\contentsline {subsubsection}{\numberline {5.1.2}Modelos \emph {ensemble}}{6}{subsubsection.5.1.2}%
+\contentsline {subsubsection}{\numberline {5.1.3}Transformers}{7}{subsubsection.5.1.3}%
+\contentsline {subsection}{\numberline {5.2}Resultados}{7}{subsection.5.2}%
+\contentsline {section}{\numberline {6}Análisis y conclusiones conjuntas}{9}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Análisis del preprocesamiento y la generación de variables}{9}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Conclusiones}{10}{subsection.6.2}%

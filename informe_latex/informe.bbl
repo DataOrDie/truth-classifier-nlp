@@ -1,0 +1,119 @@
+\begin{thebibliography}{18}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[{scikit-learn developers}(2024)]{sklearn}
+{scikit-learn developers}.
+\newblock scikit-learn: Machine learning in {Python} --- user guide, 2024.
+\newblock URL \url{https://scikit-learn.org/stable/user_guide.html}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[Reimers and Gurevych(2024)]{sbert}
+Nils Reimers and Iryna Gurevych.
+\newblock Sentence-transformers documentation, 2024.
+\newblock URL \url{https://www.sbert.net/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{Microsoft / LightGBM Contributors}(2024)]{lgbm}
+{Microsoft / LightGBM Contributors}.
+\newblock {LightGBM} documentation, 2024.
+\newblock URL \url{https://lightgbm.readthedocs.io/en/stable/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{Yandex / CatBoost Contributors}(2024)]{catboost}
+{Yandex / CatBoost Contributors}.
+\newblock {CatBoost} documentation, 2024.
+\newblock URL \url{https://catboost.ai/docs/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{XGBoost Contributors}(2024)]{xgboost}
+{XGBoost Contributors}.
+\newblock {XGBoost} documentation, 2024.
+\newblock URL \url{https://xgboost.readthedocs.io/en/stable/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[Wang(2017)]{liar}
+William~Yang Wang.
+\newblock {``Liar, Liar Pants on Fire''}: A new benchmark dataset for fake news
+  detection.
+\newblock In \emph{Proceedings of the 55th Annual Meeting of the Association
+  for Computational Linguistics (ACL 2017)}, 2017.
+\newblock URL \url{https://arxiv.org/abs/1705.00648}.
+
+\bibitem[{GitHub, Inc.}(2025)]{github}
+{GitHub, Inc.}
+\newblock {GitHub} --- where the world builds software, 2025.
+\newblock URL \url{https://github.com/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{Python Software Foundation}(2024)]{python}
+{Python Software Foundation}.
+\newblock Python 3 reference manual, 2024.
+\newblock URL \url{https://docs.python.org/3/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{The pandas development team}(2024)]{pandas}
+{The pandas development team}.
+\newblock pandas: powerful python data analysis toolkit, 2024.
+\newblock URL \url{https://pandas.pydata.org/docs/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{Hugging Face}(2024{\natexlab{a}})]{hf_transformers}
+{Hugging Face}.
+\newblock Transformers documentation, 2024{\natexlab{a}}.
+\newblock URL \url{https://huggingface.co/docs/transformers/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{Kaggle}(2025)]{kaggle}
+{Kaggle}.
+\newblock Kaggle --- your machine learning and data science community, 2025.
+\newblock URL \url{https://www.kaggle.com/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{NLTK Project}(2024)]{nltk}
+{NLTK Project}.
+\newblock {NLTK}: Natural language toolkit documentation, 2024.
+\newblock URL \url{https://www.nltk.org/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{Explosion AI}(2024)]{spacy}
+{Explosion AI}.
+\newblock {spaCy} --- industrial-strength natural language processing, 2024.
+\newblock URL \url{https://spacy.io/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{Microsoft}(2023)]{deberta}
+{Microsoft}.
+\newblock {DeBERTa-v3-base} --- hugging face model card, 2023.
+\newblock URL \url{https://huggingface.co/microsoft/deberta-v3-base}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{Hugging Face}(2024{\natexlab{b}})]{peft}
+{Hugging Face}.
+\newblock {PEFT}: State-of-the-art parameter-efficient fine-tuning methods,
+  2024{\natexlab{b}}.
+\newblock URL \url{https://huggingface.co/docs/peft/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{Hugging Face}(2024{\natexlab{c}})]{bitsandbytes}
+{Hugging Face}.
+\newblock {bitsandbytes} documentation, 2024{\natexlab{c}}.
+\newblock URL \url{https://huggingface.co/docs/bitsandbytes/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{Weights \& Biases}(2024)]{wandb}
+{Weights \& Biases}.
+\newblock {Weights \& Biases} documentation, 2024.
+\newblock URL \url{https://docs.wandb.ai/}.
+\newblock Accedido: mayo 2025.
+
+\bibitem[{joblib Contributors}(2024)]{joblib}
+{joblib Contributors}.
+\newblock joblib: Running python functions as pipeline jobs, 2024.
+\newblock URL \url{https://joblib.readthedocs.io/}.
+\newblock Accedido: mayo 2025.
+
+\end{thebibliography}
