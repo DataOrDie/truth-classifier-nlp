@@ -77,3 +77,7 @@ notebooks/AdvancedModels/catboost_info/learn/events.out.tfevents
 notebooks/TreeModels/catboost_info/time_left.tsv
 
 notebooks/TreeModels/catboost_info/learn/events.out.tfevents
+.gitignore
+catboost_info/time_left.tsv
+catboost_info/learn/events.out.tfevents
+catboost_info/learn_error.tsv
