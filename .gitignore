@@ -81,3 +81,7 @@ notebooks/TreeModels/catboost_info/learn/events.out.tfevents
 catboost_info/time_left.tsv
 catboost_info/learn/events.out.tfevents
 catboost_info/learn_error.tsv
+
+informe_marilyn
+informe_marilyn/
+informe_marilyn/*.*
