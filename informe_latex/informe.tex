@@ -116,7 +116,7 @@ El objetivo del proyecto consiste en desarrollar un sistema capaz de clasificar 
 
 El \emph{input} principal es el texto de la afirmación, pero también se cuenta con metadatos como tema, \emph{speaker}, ocupación, estado y afiliación política, que pueden aportar señal adicional al modelo.
 
-El reto central es que la veracidad no siempre se puede inferir solo del texto. Dos afirmaciones pueden ser lingüísticamente similares y pertenecer a clases opuestas, por lo que no basta con un único enfoque. A eso se suma el \emph{class imbalance} del \emph{dataset}, razón por la que se usa \textbf{Macro F1} como métrica principal, ya que permite evaluar el modelo de forma balanceada entre ambas clases. Se probaron varios enfoques: desde modelos clásicos con representaciones tipo TF-IDF~\cite{sklearn} hasta modelos más avanzados con \emph{semantic embeddings}~\cite{sbert} y técnicas de \emph{ensemble}~\cite{lgbm,catboost,xgboost}, buscando el mejor \emph{trade-off} entre precisión y generalización.
+El reto central es que la veracidad no siempre se puede inferir solo del texto: dos afirmaciones pueden ser lingüísticamente similares y pertenecer a clases opuestas. A eso se suma el \emph{class imbalance} del \emph{dataset}, razón por la que se usa \textbf{Macro F1} como métrica principal, ya que permite evaluar el rendimiento de forma equilibrada entre ambas clases.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Descripción del conjunto de datos}
@@ -134,11 +134,11 @@ El conjunto de datos utilizado~\cite{liar} contiene afirmaciones políticas acom
     \midrule
     \texttt{id}                 & Identificador       & Solo para trazabilidad; excluido del modelo. \\
     \texttt{label}              & Target binario      & 0 = verdadero, 1 = falso. \\
-    \texttt{statement}          & Texto               & El texto de la afirmación política. \\
-    \texttt{subject}            & Categórica          & Tema(s) de la afirmación; puede contener varios. \\
-    \texttt{speaker}            & Categórica          & Persona que realiza la afirmación. \\
+    \texttt{statement}          & Texto               & La afirmación política. se utilizaron análisis lexicográficos para procesarla. \\
+    \texttt{subject}            & Categórica          & Tema(s) de la afirmación; reducción de dimensiones  \\
+    \texttt{speaker}            & Categórica          & Persona que realiza la afirmación. Limpieza de datos. \\
     \texttt{speaker\_job}       & Categórica          & Cargo del hablante (27,7\,\% de valores ausentes). \\
-    \texttt{state\_info}        & Categórica          & Estado geográfico de EE.\,UU. \\
+    \texttt{state\_info}        & Categórica          & Estado geográfico de EE.\,UU. reducida.\\
     \texttt{party\_affiliation} & Categórica          & Afiliación política del hablante. \\
     \bottomrule
   \end{tabularx}
@@ -156,15 +156,7 @@ Por último, la columna \texttt{subject} podía contener varios temas separados 
 \section{Descripción de tareas comunes}
 % ─────────────────────────────────────────────────────────────────────────────
 
-El desarrollo del proyecto se llevó a cabo de forma colaborativa, distribuyendo las tareas entre los distintos integrantes del grupo. Cada miembro trabajó sobre diferentes etapas del \emph{pipeline} o sobre distintos modelos, pero las decisiones principales relacionadas con el preprocesamiento, la evaluación y la comparación de resultados se realizaron de forma conjunta para mantener coherencia en el trabajo.
-
-La planificación del trabajo se estructuró en varias fases: análisis exploratorio del \emph{dataset}, limpieza y preprocesamiento de datos, generación de variables, entrenamiento y ajuste de modelos, evaluación de resultados y documentación final. Esta organización permitió comparar los distintos experimentos bajo criterios similares y seleccionar las estrategias con mejor rendimiento.
-
-Para garantizar la reproducibilidad y el control de versiones, se utilizó GitHub~\cite{github} como repositorio común del proyecto. El desarrollo y la experimentación se realizaron principalmente en Jupyter Notebooks utilizando Python~\cite{python} y librerías de aprendizaje automático como \texttt{pandas}~\cite{pandas}, \texttt{scikit-learn}~\cite{sklearn}, XGBoost~\cite{xgboost}, LightGBM~\cite{lgbm}, CatBoost~\cite{catboost} y Hugging Face Transformers~\cite{hf_transformers}. La evaluación de resultados y generación de \emph{submissions} se llevó a cabo mediante Kaggle~\cite{kaggle}.
-
-Para la búsqueda de hiperparámetros se utilizaron técnicas como \texttt{RandomizedSearchCV} y \texttt{HalvingGridSearchCV}~\cite{sklearn}, permitiendo explorar distintas configuraciones de forma eficiente. En los modelos Transformer también se ajustaron parámetros relacionados con el entrenamiento profundo, como \emph{learning rate}, \emph{batch size}, \emph{dropout} y número de épocas.
-
-Finalmente, se compararon distintos enfoques de modelado, desde modelos lineales clásicos basados en TF-IDF hasta modelos \emph{ensemble} y arquitecturas Transformer avanzadas, analizando tanto el rendimiento obtenido como la capacidad de generalización de cada uno de ellos.
+El proyecto se desarrolló de forma colaborativa: cada integrante trabajó sobre etapas o modelos distintos, mientras que las decisiones de preprocesamiento, evaluación y comparación de resultados se tomaron de forma conjunta. Se utilizó GitHub~\cite{github} como repositorio común y Kaggle~\cite{kaggle} para la generación y envío de \emph{submissions}. La búsqueda de hiperparámetros se realizó con \texttt{RandomizedSearchCV}~\cite{sklearn}; en los modelos Transformer se ajustaron adicionalmente \emph{learning rate}, \emph{batch size}, \emph{dropout} y número de épocas.
 
 \subsection*{Herramientas y tecnologías}
 
@@ -172,27 +164,22 @@ Finalmente, se compararon distintos enfoques de modelado, desde modelos lineales
   \centering
   \caption{Herramientas utilizadas en el proyecto.}
   \label{tab:tools}
-  \renewcommand{\arraystretch}{1.25}
-  \begin{tabularx}{\textwidth}{llX}
+  {\small
+  \renewcommand{\arraystretch}{1.1}
+  \begin{tabular}{@{}lll@{}}
     \toprule
-    \textbf{Categoría}         & \textbf{Herramienta}                                  & \textbf{Uso} \\
+    \textbf{Categoría}       & \textbf{Herramienta}                                                  & \textbf{Uso principal} \\
     \midrule
-    Lenguaje                   & Python 3.x~\cite{python}                              & Todo el \emph{pipeline}. \\
-    ML clásico                 & scikit-learn~\cite{sklearn}                           & LR, RFC, \texttt{StratifiedKFold}, \texttt{RandomizedSearchCV}, escalado, codificación. \\
-    Gradient Boosting          & LightGBM~\cite{lgbm}                                  & Clasificador \emph{gradient boosting} hoja a hoja. \\
-    Gradient Boosting          & CatBoost~\cite{catboost}                              & Soporte nativo de categóricas y \emph{ordered boosting}. \\
-    Gradient Boosting          & XGBoost~\cite{xgboost}                                & Modelo base en el \emph{stacking}. \\
-    \emph{Embeddings}          & sentence-transformers~\cite{sbert}                    & \texttt{all-MiniLM-L6-v2} (384~dim) y \texttt{all-mpnet-base-v2} (768~dim). \\
-    NLP                        & NLTK~\cite{nltk}                                      & Porter/Snowball \emph{stemmer}, WordNet \emph{lemmatizer}. \\
-    NER                        & spaCy~\cite{spacy}                                    & Conteo de entidades nombradas (PERSON, ORG, GPE, DATE\ldots). \\
-    Transformers               & HuggingFace Transformers~\cite{hf_transformers}       & \emph{Fine-tuning} de DeBERTa-v3-small/base~\cite{deberta}. \\
-    \emph{Fine-tuning} efic.   & PEFT + bitsandbytes~\cite{peft,bitsandbytes}          & LoRA sobre modelos 7B (experimento 5). \\
-    \emph{Tracking}            & Weights \& Biases~\cite{wandb}                        & Métricas, curvas, importancia de \emph{features}, artefactos. \\
-    Serialización              & joblib~\cite{joblib}                                  & Guardado de modelos, vectorizadores y \emph{threshold}. \\
-    Control de versiones       & GitHub~\cite{github}                                  & Repositorio común del equipo. \\
-    Evaluación                 & Kaggle~\cite{kaggle}                                  & Generación y envío de \emph{submissions}. \\
+    Lenguaje                 & Python 3.x~\cite{python}                                              & Todo el \emph{pipeline}. \\
+    ML clásico               & scikit-learn~\cite{sklearn}                                           & LR, RFC, KFold, búsqueda de HP. \\
+    Gradient Boosting        & LightGBM / CatBoost / XGBoost~\cite{lgbm,catboost,xgboost}           & Modelos \emph{boosted} y \emph{stacking}. \\
+    \emph{Embeddings}        & sentence-transformers~\cite{sbert}                                    & \texttt{all-MiniLM-L6-v2}, \texttt{all-mpnet-base-v2}. \\
+    NLP / NER                & NLTK + spaCy~\cite{nltk,spacy}                                        & \emph{Stemming}, lematización, entidades. \\
+    Transformers             & HuggingFace + PEFT + bitsandbytes~\cite{hf_transformers,peft,bitsandbytes} & DeBERTa~\cite{deberta}, Mistral-7B LoRA~\cite{mistral}. \\
+    \emph{Tracking}          & Weights \& Biases~\cite{wandb}                                        & Métricas, curvas, artefactos. \\
+    Otros                    & joblib / GitHub / Kaggle~\cite{joblib,github,kaggle}                  & Serialización, versiones, \emph{submissions}. \\
     \bottomrule
-  \end{tabularx}
+  \end{tabular}}
 \end{table}
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -207,25 +194,13 @@ Los modelos fueron entrenados utilizando la misma estrategia de validación y co
 
 \subsubsection{Modelos lineales}
 
-Los primeros modelos evaluados fueron algoritmos lineales clásicos basados en representaciones TF-IDF del texto~\cite{sklearn}. Se utilizaron principalmente Logistic Regression y Linear SVM, ya que suelen ofrecer buenos resultados como \emph{baseline} en problemas de clasificación textual.
-
-Para estos modelos se emplearon representaciones TF-IDF con $n$-gramas de palabras y caracteres, además de variables categóricas relacionadas con el contexto político y el hablante. También se probaron distintas configuraciones de regularización y balanceo de clases mediante \texttt{class\_weight=\textquotedbl balanced\textquotedbl}.
-
-La Regresión Logística destacó por su simplicidad, velocidad de entrenamiento e interpretabilidad, obteniendo resultados competitivos en las primeras fases del proyecto. Por otro lado, Linear SVM permitió mejorar ligeramente la separación entre clases, especialmente al incorporar $n$-gramas de caracteres y calibración de probabilidades.
-
-Aunque estos modelos ofrecieron \emph{baselines} sólidos, presentaban limitaciones para capturar relaciones semánticas complejas entre el contenido textual y la información contextual.
+Como \emph{baseline} se evaluaron Regresión Logística y Linear SVM con representaciones TF-IDF ($n$-gramas de palabras y caracteres)~\cite{sklearn}, regularización L1/L2 y \texttt{class\_weight} balanceado. La Regresión Logística ofreció buena interpretabilidad y resultados competitivos, aunque su carácter lineal le impide capturar interacciones complejas entre texto y \emph{metadata}.
 
 \subsubsection{Modelos \emph{ensemble}}
 
-Posteriormente se evaluaron distintos modelos \emph{ensemble} y basados en árboles de decisión, incluyendo Random Forest~\cite{sklearn}, XGBoost~\cite{xgboost}, LightGBM~\cite{lgbm} y CatBoost~\cite{catboost}. Estos modelos permitieron capturar relaciones no lineales entre las variables y aprovechar mejor las interacciones entre texto y \emph{metadata} contextual.
+Se evaluaron Random Forest~\cite{sklearn}, XGBoost~\cite{xgboost}, LightGBM~\cite{lgbm} y CatBoost~\cite{catboost}, combinados con \emph{embeddings} semánticos~\cite{sbert} y variables derivadas del historial del hablante. Estos modelos capturaron relaciones no lineales que los modelos lineales no podían representar; CatBoost destacó por su manejo nativo de variables categóricas y el control de \emph{leakage} mediante \emph{ordered boosting}.
 
-En Random Forest se utilizaron \emph{embeddings} semánticos~\cite{sbert} y variables derivadas relacionadas con el historial del hablante y el contexto político. Este modelo mostró una mejora significativa respecto a los modelos lineales, especialmente gracias al uso de \emph{embeddings} y variables agregadas.
-
-XGBoost~\cite{xgboost} y LightGBM~\cite{lgbm} se emplearon junto con selección de características y ajuste de hiperparámetros mediante búsqueda aleatoria. Estos modelos consiguieron mejorar el rendimiento en ROC-AUC, aunque también mostraron sensibilidad al sobreajuste en determinadas variables relacionadas con el historial del hablante.
-
-CatBoost~\cite{catboost} obtuvo uno de los mejores rendimientos entre los modelos individuales, gracias a su capacidad para manejar variables categóricas de forma nativa y reducir el impacto del \emph{leakage} mediante \emph{ordered boosting}.
-
-Finalmente, se implementó una estrategia de \emph{stacking} combinando varios modelos base mediante un meta-clasificador Logistic Regression~\cite{sklearn}. Este enfoque permitió aprovechar la complementariedad entre modelos y mejorar tanto Macro F1 como ROC-AUC respecto a los modelos individuales.
+Finalmente, se implementó \emph{stacking} con meta-clasificador Logistic Regression~\cite{sklearn}, aprovechando la complementariedad entre los modelos base y mejorando tanto Macro F1 como ROC-AUC respecto a los modelos individuales.
 
 \subsubsection{Transformers}
 
@@ -262,12 +237,8 @@ Los resultados finales obtenidos por los modelos más relevantes se muestran en 
     \emph{Stacking} (\texttt{all-mpnet-base-v2}, 768\,dim)                  & 0,643             & 0,700            & 0,62 \\
     \emph{Late Fusion} + DeBERTa-v3-small                                   & 0,644             & 0,709            & ---  \\
     \emph{Late Fusion} + DeBERTa-v3-base                                    & 0,647             & 0,711            & ---  \\
-    Mistral-7B LoRA \emph{standalone} (fold\,1 colapsado)                   & 0,655             & 0,724            & 0,50 \\
-    Mistral-7B LoRA + \emph{Late Fusion} (Lora\,1)                          & 0,649             & 0,721            & 0,63 \\
-    Mistral-7B LoRA estable + \emph{Stacking} (Lora\,2)                     & 0,664             & 0,742            & 0,57 \\
-    \textbf{Mistral-7B LoRA estable \emph{standalone} (Lora\,2)}            & \textbf{0,670}    & \textbf{0,741}   & \textbf{0,41} \\
-    Mistral-7B LoRA 3\,épocas \emph{standalone} (Lora\,3)                   & 0,668             & 0,748            & 0,43 \\
-    Mistral-7B LoRA 3\,épocas \emph{transformer-only} (Lora\,3)             & 0,669             & 0,741            & 0,43 \\
+    Mistral-7B LoRA (primer intento, fold\,1 colapsado)                     & 0,655             & 0,724            & 0,50 \\
+    \textbf{Mistral-7B LoRA estable \emph{standalone}}                       & \textbf{0,670}    & \textbf{0,741}   & \textbf{0,41} \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -284,21 +255,13 @@ En general, los resultados muestran que la combinación de representaciones y en
 
 \subsection{Análisis del preprocesamiento y la generación de variables}
 
-El preprocesamiento de datos y la generación de variables tuvieron un papel fundamental en el rendimiento de los modelos desarrollados. El objetivo principal fue reducir el ruido del \emph{dataset}, representar correctamente la información textual y contextual, y evitar problemas de sobreajuste o \emph{leakage} durante el entrenamiento.
+Se realizó una limpieza general de las variables categóricas y textuales: normalización a minúsculas, sustitución de nulos en \texttt{speaker\_job} y \texttt{state\_info} por \texttt{unknown}, y agrupación de categorías poco frecuentes bajo la etiqueta \texttt{other}. La variable \texttt{subject}, que podía contener varios temas por afirmación, se procesó con \texttt{MultiLabelBinarizer}~\cite{sklearn}.
 
-En primer lugar, se realizó una limpieza general de las variables categóricas y textuales. Las columnas de texto se normalizaron convirtiendo todo el contenido a minúsculas, eliminando espacios innecesarios y estandarizando formatos inconsistentes. Los valores nulos de variables como \texttt{speaker\_job} y \texttt{state\_info} se reemplazaron por categorías específicas como \texttt{unknown} o \texttt{missing}, evitando la pérdida de información asociada a la ausencia de datos.
+Para los modelos clásicos basados en TF-IDF~\cite{sklearn} se aplicó preprocesamiento textual agresivo sobre \texttt{statement}: eliminación de puntuación, normalización de contracciones, tokenización, eliminación de \emph{stopwords} y lematización con NLTK~\cite{nltk}, conservando negaciones relevantes. La representación combinó TF-IDF con $n$-gramas de palabras y caracteres junto con \emph{embeddings} semánticos de Sentence Transformers~\cite{sbert} (\texttt{all-MiniLM-L6-v2}, \texttt{all-mpnet-base-v2}).
 
-Para los modelos clásicos basados en TF-IDF~\cite{sklearn} se aplicó un preprocesamiento textual más agresivo sobre la columna \texttt{statement}. Este proceso incluyó eliminación de puntuación, normalización de contracciones, reemplazo de números por un token genérico, tokenización, eliminación de \emph{stopwords} y lematización con NLTK~\cite{nltk}. Además, se conservaron negaciones como \emph{not} o \emph{never}, ya que aportaban información relevante para la clasificación.
+Se generaron también variables derivadas del comportamiento histórico de los hablantes: tasas de veracidad por hablante, partido y tema. Para evitar \emph{leakage}, estas estadísticas se calcularon con estrategia \emph{out-of-fold}~\cite{sklearn} dentro de la validación cruzada.
 
-La representación textual se realizó principalmente mediante TF-IDF con $n$-gramas de palabras y caracteres~\cite{sklearn}. También se utilizaron \emph{embeddings} semánticos generados con Sentence Transformers~\cite{sbert}, como \texttt{all-MiniLM-L6-v2} y \texttt{all-mpnet-base-v2}, permitiendo capturar relaciones semánticas más complejas entre afirmaciones.
-
-En las variables categóricas se aplicaron técnicas de reducción de cardinalidad agrupando categorías poco frecuentes bajo la etiqueta \texttt{other}. Esto se utilizó especialmente en variables como \texttt{speaker}, \texttt{speaker\_job} y \texttt{subject}, donde existía una gran cantidad de valores con muy pocas apariciones.
-
-La variable \texttt{subject} requería un tratamiento especial debido a que una misma afirmación podía pertenecer a varios temas simultáneamente. Para ello se utilizó \texttt{MultiLabelBinarizer}~\cite{sklearn}, generando variables binarias independientes para cada tema relevante.
-
-Además, se generaron variables derivadas relacionadas con el contexto político y el comportamiento histórico de los hablantes. Entre ellas destacan las tasas históricas de veracidad asociadas al hablante, partido político o tema tratado. Para evitar \emph{leakage}, estas estadísticas se calcularon utilizando estrategias \emph{out-of-fold} dentro de la validación cruzada~\cite{sklearn}.
-
-Finalmente, en los modelos Transformer~\cite{hf_transformers} no se aplicó una limpieza textual agresiva, ya que estos modelos aprovechan mejor el lenguaje natural original. En su lugar, se construyó un texto enriquecido que combinaba la afirmación con información contextual como el hablante, el tema y la afiliación política, permitiendo incorporar \emph{metadata} directamente en la entrada del modelo.
+En los modelos Transformer~\cite{hf_transformers} no se aplicó limpieza agresiva; en su lugar se construyó un texto enriquecido que concatenaba la afirmación con el hablante, el tema y la afiliación política, incorporando \emph{metadata} directamente en la entrada del modelo.
 
 \subsection{Conclusiones}
 
