@@ -69,16 +69,9 @@
   mediante Procesamiento del Lenguaje Natural\par}
   \vspace{0.5em}\rule{\linewidth}{0.5pt}
   \vspace{1.2cm}
-  {\large Competencia Kaggle --- Asignatura ABID\par}
+  {\large Asignatura ABID --- Kaggle Challenge II\par}
   \vspace{1.5cm}
-  {\normalsize
-  \renewcommand{\arraystretch}{1.4}
-  \begin{tabular}{rl}
-    \textbf{Tarea:}       & Clasificación binaria de afirmaciones políticas \\
-    \textbf{Dataset:}     & 8.950 muestras de entrenamiento + 3.860 de test \\
-    \textbf{Métrica:}     & Macro F1 Score \\
-    \textbf{Plataforma:}  & Kaggle \\
-  \end{tabular}\par}
+    % Task/dataset/metric/platform block removed per request
   \vspace{1.5cm}
   {\large\bfseries Grupo 1\par}
   \vspace{0.6cm}
@@ -92,7 +85,7 @@
     Iv\'{a}n Omar Angeles Mart\'{i}nez       \\
   \end{tabular}\par}
   \vfill
-  {\normalsize Mayo de 2025\par}
+  {\normalsize Mayo de 2026\par}
 \end{titlepage}
 
 \tableofcontents
@@ -130,7 +123,7 @@ El conjunto de datos utilizado~\cite{liar} contiene afirmaciones políticas acom
   \label{tab:columnas}
   \begin{tabularx}{\textwidth}{llX}
     \toprule
-    \textbf{Variable}           & \textbf{Tipo}       & \textbf{Descripción} \\
+    \textbf{Variable}           & \textbf{Tipo}       & \textbf{Descripción y Pre-Procesamiento} \\
     \midrule
     \texttt{id}                 & Identificador       & Solo para trazabilidad; excluido del modelo. \\
     \texttt{label}              & Target binario      & 0 = verdadero, 1 = falso. \\
@@ -149,6 +142,8 @@ Durante el análisis exploratorio inicial se observó que el \emph{dataset} cont
 También se detectaron valores nulos principalmente en las variables \texttt{speaker\_job} y \texttt{state\_info}. En lugar de eliminar estos registros, los valores faltantes se sustituyeron por la categoría \texttt{unknown}, conservando así todas las muestras disponibles y permitiendo que los modelos pudieran tratar la ausencia de información como una categoría más.
 
 Otro aspecto relevante del \emph{dataset} es la alta cardinalidad de algunas variables categóricas, especialmente \texttt{speaker} y \texttt{speaker\_job}, donde muchos valores aparecen muy pocas veces. Para reducir ruido y mejorar la generalización, las categorías poco frecuentes se agruparon bajo la etiqueta \texttt{other}.
+
+Otro aspecto relevante fue la calidad de la columna \texttt{statement}, que presentó un alto grado de corrupción: caracteres Unicode mal codificados, fragmentos JSON embebidos en el texto y secciones del archivo originalmente en formato TSV en lugar de CSV, lo que provocaba desplazamientos de columnas. Fue necesario implementar un proceso de limpieza específico para recuperar correctamente el texto de cada afirmación antes de cualquier representación textual.
 
 Por último, la columna \texttt{subject} podía contener varios temas separados por comas para una misma afirmación. Por ello, se realizó una limpieza de esta variable y se generaron características auxiliares, como una versión normalizada del texto y el número de temas asociados a cada afirmación.
 
