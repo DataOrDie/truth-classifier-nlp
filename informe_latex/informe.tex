@@ -97,7 +97,7 @@
 
 La detección automática de afirmaciones falsas es una tarea cada vez más relevante dentro del Procesamiento del Lenguaje Natural, especialmente en contextos políticos, donde la desinformación puede influir de forma significativa en la opinión pública. Este proyecto aborda un problema de clasificación binaria: predecir si una afirmación política es verdadera o falsa a partir de su contenido textual e información contextual como el emisor, su afiliación política o el tema tratado.
 
-Para resolver el problema se evaluaron distintos enfoques de aprendizaje automático, desde modelos clásicos hasta modelos más avanzados basados en \emph{embeddings} semánticos, técnicas de \emph{ensemble} y \emph{boosting}.
+Para resolver el problema se evaluaron distintos enfoques de aprendizaje automático, desde modelos clásicos hasta modelos más avanzados basados en \emph{embeddings} semánticos, técnicas de \emph{ensemble} y \emph{boosting}. El mejor resultado del equipo alcanzó un \textbf{Macro F1 de 0,69638} en el \emph{leaderboard} público de Kaggle~\cite{kaggle}, mediante una estrategia híbrida de \emph{distillation} desde un \emph{ensemble} de Mistral-7B~\cite{mistral} y DeBERTa-v3-large~\cite{deberta}.
 
 Esta memoria resume el análisis del conjunto de datos, el preprocesamiento realizado, los modelos desarrollados, la metodología de evaluación y las principales conclusiones obtenidas.
 
@@ -137,21 +137,38 @@ El conjunto de datos utilizado~\cite{liar} contiene afirmaciones políticas acom
   \end{tabularx}
 \end{table}
 
-Durante el análisis exploratorio inicial se observó que el \emph{dataset} contiene \textbf{8.950 muestras} y presenta un cierto desbalanceo entre clases. Aproximadamente el~65\,\% de las muestras pertenecen a la clase verdadera, mientras que el~35\,\% corresponden a afirmaciones falsas. Este desequilibrio se tuvo en cuenta en la elección de la métrica de evaluación, dando prioridad a Macro F1, ya que permite valorar de forma más equilibrada el rendimiento en ambas clases.
+Durante el análisis exploratorio inicial se observó que el conjunto de entrenamiento contiene \textbf{8.950 muestras} y el de test \textbf{3.836}, con un cierto desbalanceo entre clases. Aproximadamente el~65\,\% de las muestras pertenecen a la clase verdadera, mientras que el~35\,\% corresponden a afirmaciones falsas. Este desequilibrio se tuvo en cuenta en la elección de la métrica de evaluación, dando prioridad a Macro F1, ya que permite valorar de forma más equilibrada el rendimiento en ambas clases.
 
-También se detectaron valores nulos principalmente en las variables \texttt{speaker\_job} y \texttt{state\_info}. En lugar de eliminar estos registros, los valores faltantes se sustituyeron por la categoría \texttt{unknown}, conservando así todas las muestras disponibles y permitiendo que los modelos pudieran tratar la ausencia de información como una categoría más.
+También se detectaron valores nulos en las variables \texttt{speaker\_job} (27,7\,\% de valores ausentes) y \texttt{state\_info} ($\sim$22\,\%). En lugar de eliminar estos registros, los valores faltantes se sustituyeron por la categoría \texttt{unknown}, conservando así todas las muestras disponibles y permitiendo que los modelos pudieran tratar la ausencia de información como una categoría más.
 
-Otro aspecto relevante del \emph{dataset} es la alta cardinalidad de algunas variables categóricas, especialmente \texttt{speaker} y \texttt{speaker\_job}, donde muchos valores aparecen muy pocas veces. Para reducir ruido y mejorar la generalización, las categorías poco frecuentes se agruparon bajo la etiqueta \texttt{other}.
+Otro aspecto relevante del \emph{dataset} es la alta cardinalidad de algunas variables categóricas: \texttt{speaker} (2.634 valores únicos) y \texttt{speaker\_job} (1.018 únicos), donde el 84,6\,\% de los cargos aparece menos de cinco veces. Para reducir ruido y mejorar la generalización, las categorías poco frecuentes se agruparon bajo la etiqueta \texttt{other}.
 
 Otro aspecto relevante fue la calidad de la columna \texttt{statement}, que presentó un alto grado de corrupción: caracteres Unicode mal codificados, fragmentos JSON embebidos en el texto y secciones del archivo originalmente en formato TSV en lugar de CSV, lo que provocaba desplazamientos de columnas. Fue necesario implementar un proceso de limpieza específico para recuperar correctamente el texto de cada afirmación antes de cualquier representación textual.
 
 Por último, la columna \texttt{subject} podía contener varios temas separados por comas para una misma afirmación. Por ello, se realizó una limpieza de esta variable y se generaron características auxiliares, como una versión normalizada del texto y el número de temas asociados a cada afirmación.
 
+\subsection{Preprocesamiento y generación de variables}
+
+Se realizó una limpieza general de las variables categóricas y textuales: normalización a minúsculas, sustitución de nulos en \texttt{speaker\_job} y \texttt{state\_info} por \texttt{unknown}, y agrupación de categorías poco frecuentes bajo la etiqueta \texttt{other}. La variable \texttt{subject}, que podía contener varios temas por afirmación, se procesó con \texttt{MultiLabelBinarizer}~\cite{sklearn}.
+
+Para los modelos clásicos basados en TF-IDF~\cite{sklearn} se aplicó preprocesamiento textual agresivo sobre \texttt{statement}: eliminación de puntuación, normalización de contracciones, tokenización, eliminación de \emph{stopwords} y lematización con NLTK~\cite{nltk}, conservando negaciones relevantes. La representación combinó TF-IDF con $n$-gramas de palabras y caracteres junto con \emph{embeddings} semánticos de Sentence Transformers~\cite{sbert} (\texttt{all-MiniLM-L6-v2}, \texttt{all-mpnet-base-v2}).
+
+Se generaron también variables derivadas del comportamiento histórico de los hablantes: tasas de veracidad por hablante, partido y tema. Para evitar \emph{leakage}, estas estadísticas se calcularon con estrategia \emph{out-of-fold}~\cite{sklearn} dentro de la validación cruzada.
+
+En los modelos Transformer~\cite{hf_transformers} no se aplicó limpieza agresiva; en su lugar se construyó un texto enriquecido (\texttt{model\_text}) que combina la afirmación con la \emph{metadata} contextual en formato natural, siguiendo el esquema:
+
+\begin{center}
+\small\ttfamily
+Speaker: <speaker> | Party: <party> | Job: <job> | State: <state> | Topic: <subject> [SEP] Claim: <statement>
+\end{center}
+
+donde \texttt{[SEP]} es el token separador estándar del \emph{tokenizer}. Este enfoque permite al modelo tratar los metadatos como tokens semánticos y aprender automáticamente sus interacciones con el contenido del \texttt{statement}, sin necesidad de codificación \emph{one-hot} ni \emph{embeddings} categóricos explícitos.
+
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Descripción de tareas comunes}
 % ─────────────────────────────────────────────────────────────────────────────
 
-El proyecto se desarrolló de forma colaborativa: cada integrante trabajó sobre etapas o modelos distintos, mientras que las decisiones de preprocesamiento, evaluación y comparación de resultados se tomaron de forma conjunta. Se utilizó GitHub~\cite{github} como repositorio común y Kaggle~\cite{kaggle} para la generación y envío de \emph{submissions}. La búsqueda de hiperparámetros se realizó con \texttt{RandomizedSearchCV}~\cite{sklearn}; en los modelos Transformer se ajustaron adicionalmente \emph{learning rate}, \emph{batch size}, \emph{dropout} y número de épocas.
+El proyecto se desarrolló de forma colaborativa: cada integrante trabajó sobre etapas o modelos distintos, mientras que las decisiones de preprocesamiento, evaluación y comparación de resultados se tomaron de forma conjunta. Se utilizó GitHub~\cite{github} como repositorio común y Kaggle~\cite{kaggle} para la generación y envío de \emph{submissions}. La búsqueda de hiperparámetros se realizó con \texttt{RandomizedSearchCV}~\cite{sklearn}; en los modelos Transformer se ajustaron adicionalmente \emph{learning rate}, \emph{batch size}, \emph{dropout}, número de épocas, umbral de decisión y \emph{warmup}.
 
 \subsection*{Herramientas y tecnologías}
 
@@ -203,9 +220,24 @@ La última familia de modelos evaluados estuvo basada en arquitecturas Transform
 
 Para los Transformers se utilizó texto enriquecido con \emph{metadata} contextual, incorporando información como el hablante, el tema y la afiliación política directamente en la entrada textual del modelo. Además, se ajustaron hiperparámetros como \emph{learning rate}, \emph{batch size}, \emph{dropout} y número de épocas para optimizar el rendimiento. Para los experimentos de \emph{fine-tuning} eficiente se emplearon las librerías PEFT y bitsandbytes~\cite{peft,bitsandbytes}.
 
-Los modelos Transformer mostraron mejores resultados que los modelos clásicos cuando se combinaron con información contextual. DeBERTa-v3-base con \emph{late fusion} en el \emph{stacking} alcanzó Macro F1 = 0,647 y ROC-AUC = 0,711.
+Los modelos Transformer mostraron mejores resultados que los modelos clásicos cuando se combinaron con información contextual. DeBERTa-v3-base con \emph{late fusion} en el \emph{stacking} alcanzó Macro F1 = 0,647 y ROC-AUC = 0,711 en \emph{holdout}.
 
-Para superar ese techo se probó LoRA (\emph{Low-Rank Adaptation})~\cite{peft} sobre \texttt{mistralai/Mistral-7B-v0.1}~\cite{mistral}, cuantizado en 4 bits con bitsandbytes (NF4)~\cite{bitsandbytes}. Con \emph{k-fold} de 5 y \emph{learning rate} = 5e-5, el modelo alcanzó Macro F1 = \textbf{0,670} y ROC-AUC = \textbf{0,741} en modo \emph{standalone}, convirtiéndose en el mejor resultado del proyecto. Un hallazgo clave fue que añadir los GBDT al \emph{stacking} en este punto \emph{empeoró} el resultado: el coeficiente del transformer en el meta-clasificador ascendió a 2,75 frente a 0,08--0,50 de los modelos de árboles, evidencia de que estos ya no aportaban señal útil. El transformer con \emph{threshold sweep} directo sobre las predicciones OOF superó al \emph{stacking} completo en más de 0,05 puntos de Macro F1.
+Para escalar la capacidad del \emph{encoder} se entrenó \textbf{DeBERTa-v3-large}~\cite{deberta} (435\,M parámetros, atención \emph{disentangled} y preentrenamiento estilo ELECTRA), el mejor modelo \emph{encoder} del equipo con Macro F1 = 0,667 en el \emph{leaderboard} de Kaggle. Para que cupiera en GPU T4 se usó \texttt{batch\_size=8} con \texttt{gradient\_accumulation\_steps=2} y \emph{gradient checkpointing}. Se aplicó \emph{class weight} (1,85;\,1,0) para combatir el desbalance, \emph{label smoothing} de 0,05, \emph{cosine LR schedule} con \emph{warmup} del 10\,\% y \emph{learning rate} = 1e-5.
+
+Para superar ese techo se probó LoRA (\emph{Low-Rank Adaptation})~\cite{peft} sobre \texttt{mistralai/Mistral-7B-v0.1}~\cite{mistral}, cuantizado en 4 bits con bitsandbytes (NF4)~\cite{bitsandbytes}. LoRA introduce matrices de rango bajo en las capas de atención y entrena únicamente esos $\sim$10--50\,MB adicionales en lugar de los $\sim$14\,GB del modelo completo, lo que hace viable el entrenamiento en GPU T4. Con \emph{k-fold} de 3 y \emph{learning rate} = 5e-5, el modelo alcanzó Macro F1 = \textbf{0,676} en Kaggle (0,670 en \emph{holdout} interno), convirtiéndose en el mejor modelo individual del proyecto. Un hallazgo clave fue que añadir los GBDT al \emph{stacking} en este punto \emph{empeoró} el resultado: el coeficiente del transformer en el meta-clasificador ascendió a 2,75 frente a 0,08--0,50 de los modelos de árboles, evidencia de que estos ya no aportaban señal útil. El transformer con \emph{threshold sweep} directo sobre las predicciones OOF superó al \emph{stacking} completo en más de 0,05 puntos de Macro F1.
+
+\subsubsection{Estrategias de ensamble}
+
+Una vez entrenados los modelos individuales más fuertes (Mistral-7B y DeBERTa-v3-large), se exploraron tres estrategias de combinación que produjeron los mayores saltos de rendimiento del proyecto.
+
+\paragraph{Voting con confianza Mistral\,$\times$\,DeBERTa-large.}
+Partiendo de las predicciones binarias de Mistral-7B, se sobrescriben los casos en que DeBERTa-large discrepa con probabilidad $\geq 0{,}70$ o $\leq 0{,}30$. Esta estrategia explota la diversidad arquitectónica (LLM \emph{decoder-only} frente a Transformer \emph{encoder} bidireccional): de los 3.836 ejemplos del test se modificaron 175 predicciones (4,6\,\%), obteniendo Macro F1 = 0,687 en Kaggle.
+
+\paragraph{Voting \emph{speaker-aware}.}
+Refinamiento del voting anterior con umbrales adaptados al perfil del orador: en \emph{speakers} donde DeBERTa-large es históricamente fiable (precisión OOF $>80$\,\%) se relaja el umbral a 0,50/0,50 (más \emph{flips}); en \emph{speakers} poco fiables ($<60$\,\%) se endurece a 0,85/0,15 (menos \emph{flips}, mayor confianza en Mistral). Resultado: Macro F1 = 0,689 en Kaggle.
+
+\paragraph{Distillation desde el voting ensemble.}
+Las predicciones del voting Mistral\,$\times$\,DeBERTa-large (F1 = 0,687) se emplearon como \emph{pseudo-labels} del test. Se reentrenó un nuevo DeBERTa-v3-large sobre las 8.950 muestras de entrenamiento más las 3.836 \emph{pseudo-labels} con peso 0,7. El modelo destilado aprendió patrones que ningún modelo individual capturaba, ya que su ``maestro'' (el voting) era más preciso que cualquier componente por separado, obteniendo el \textbf{mejor resultado del equipo: Macro F1 = 0,696} en Kaggle.
 
 \subsection{Resultados}
 
@@ -213,52 +245,40 @@ La evaluación de los modelos se realizó utilizando validación cruzada estrati
 
 A lo largo del proyecto se observó una mejora progresiva del rendimiento al incorporar representaciones textuales más avanzadas, variables contextuales y técnicas de combinación de modelos. Los modelos lineales basados en TF-IDF proporcionaron \emph{baselines} sólidos, mientras que los modelos \emph{ensemble} y Transformer consiguieron capturar relaciones más complejas entre el texto y la \emph{metadata} política.
 
-Los resultados finales obtenidos por los modelos más relevantes se muestran en la Tabla~\ref{tab:resultados}.
+La Tabla~\ref{tab:kaggle} muestra la progresión del equipo en el \emph{leaderboard} público de Kaggle, incluyendo las estrategias de ensamble.
 
 \begin{table}[H]
   \centering
-  \caption{Resultados en \emph{holdout} de los modelos evaluados (ordenados por Macro F1).}
-  \label{tab:resultados}
-  \renewcommand{\arraystretch}{1.3}
-  \begin{tabular}{lccc}
+  \caption{Progresión en el \emph{leaderboard} público de Kaggle (Macro F1).}
+  \label{tab:kaggle}
+  {\small
+  \renewcommand{\arraystretch}{0.95}
+  \begin{tabular}{lc}
     \toprule
-    \textbf{Modelo}                                                        & \textbf{Macro F1} & \textbf{ROC-AUC} & \textbf{Umbral} \\
+    \textbf{Modelo / Estrategia}                   & \textbf{Macro F1} \\
     \midrule
-    LR \emph{baseline} (TF-IDF)                                            & 0,604             & 0,654            & 0,50 \\
-    LR + \emph{nested CV} + \emph{embeddings}                              & 0,611             & 0,660            & ---  \\
-    Random Forest (embeddings + NER + \texttt{job\_true\_rate})            & 0,621             & 0,667            & 0,58 \\
-    LGBM Opción B (sin \texttt{speaker\_true\_rate})                        & 0,618             & 0,679            & 0,52 \\
-    CatBoost + Opción B                                                     & 0,629             & 0,674            & 0,46 \\
-    \emph{Stacking} (\texttt{all-mpnet-base-v2}, 768\,dim)                  & 0,643             & 0,700            & 0,62 \\
-    \emph{Late Fusion} + DeBERTa-v3-small                                   & 0,644             & 0,709            & ---  \\
-    \emph{Late Fusion} + DeBERTa-v3-base                                    & 0,647             & 0,711            & ---  \\
-    Mistral-7B LoRA (primer intento, fold\,1 colapsado)                     & 0,655             & 0,724            & 0,50 \\
-    \textbf{Mistral-7B LoRA estable \emph{standalone}}                       & \textbf{0,670}    & \textbf{0,741}   & \textbf{0,41} \\
+    TF-IDF + Logistic Regression (\emph{baseline}) & 0,623 \\
+    LightGBM + \emph{features} ricas               & 0,603 \\
+    ELECTRA-large con \emph{metadata}              & 0,639 \\
+    RoBERTa-large                                  & 0,642 \\
+    DeBERTa-v3-base (\emph{multi-seed})            & 0,658 \\
+    DeBERTa-v3-large                               & 0,667 \\
+    Mistral-7B + LoRA (3\,\emph{folds})            & 0,676 \\
+    Voting Mistral\,$\times$\,DeBERTa-large        & 0,687 \\
+    Voting \emph{speaker-aware}                    & 0,689 \\
+    \textbf{Distillation desde voting}             & \textbf{0,696} \\
     \bottomrule
-  \end{tabular}
+  \end{tabular}}
 \end{table}
 
 Uno de los factores que más contribuyó a la mejora del rendimiento fue la incorporación de \emph{embeddings} semánticos~\cite{sbert} y variables contextuales relacionadas con el hablante y el tema de la afirmación. También se comprobó que algunas variables históricas, aunque muy predictivas, podían introducir problemas de sobreajuste si no se calculaban correctamente mediante estrategias \emph{out-of-fold}.
 
-Los modelos Transformer~\cite{hf_transformers,deberta} mejoraron notablemente al incorporar \emph{metadata} contextual directamente en el texto de entrada. Hasta DeBERTa-v3-base, los mejores resultados se obtenían mediante \emph{late fusion} combinando Transformers con modelos \emph{ensemble}. Sin embargo, al escalar a Mistral-7B con LoRA~\cite{peft,mistral}, el patrón se invirtió: el modelo de lenguaje capturaba señal de texto tan diferente a la de los GBDT que añadir estos al \emph{ensemble} introducía ruido en lugar de complementariedad. El transformer \emph{standalone} superó al \emph{stacking} completo en Macro F1.
+Los modelos Transformer~\cite{hf_transformers,deberta} mejoraron notablemente al incorporar \emph{metadata} contextual directamente en el texto de entrada. Hasta DeBERTa-v3-base los mejores resultados se obtenían mediante \emph{late fusion} con modelos \emph{ensemble}; al escalar a Mistral-7B con LoRA~\cite{peft,mistral}, el patrón se invirtió: el LLM capturaba señal tan diferente a la de los GBDT que añadirlos introducía ruido. Finalmente, las estrategias de voting y \emph{distillation} recuperaron la complementariedad al aprovechar la diversidad arquitectónica real (LLM \emph{decoder-only} frente a \emph{encoder} bidireccional).
 
-En general, los resultados muestran que la combinación de representaciones y enfoques es beneficiosa hasta el punto en que la diferencia de calidad entre los componentes es demasiado grande; en ese momento, el componente más fuerte debe utilizarse solo.
 
 % ─────────────────────────────────────────────────────────────────────────────
-\section{Análisis y conclusiones conjuntas}
+\section{Conclusiones}
 % ─────────────────────────────────────────────────────────────────────────────
-
-\subsection{Análisis del preprocesamiento y la generación de variables}
-
-Se realizó una limpieza general de las variables categóricas y textuales: normalización a minúsculas, sustitución de nulos en \texttt{speaker\_job} y \texttt{state\_info} por \texttt{unknown}, y agrupación de categorías poco frecuentes bajo la etiqueta \texttt{other}. La variable \texttt{subject}, que podía contener varios temas por afirmación, se procesó con \texttt{MultiLabelBinarizer}~\cite{sklearn}.
-
-Para los modelos clásicos basados en TF-IDF~\cite{sklearn} se aplicó preprocesamiento textual agresivo sobre \texttt{statement}: eliminación de puntuación, normalización de contracciones, tokenización, eliminación de \emph{stopwords} y lematización con NLTK~\cite{nltk}, conservando negaciones relevantes. La representación combinó TF-IDF con $n$-gramas de palabras y caracteres junto con \emph{embeddings} semánticos de Sentence Transformers~\cite{sbert} (\texttt{all-MiniLM-L6-v2}, \texttt{all-mpnet-base-v2}).
-
-Se generaron también variables derivadas del comportamiento histórico de los hablantes: tasas de veracidad por hablante, partido y tema. Para evitar \emph{leakage}, estas estadísticas se calcularon con estrategia \emph{out-of-fold}~\cite{sklearn} dentro de la validación cruzada.
-
-En los modelos Transformer~\cite{hf_transformers} no se aplicó limpieza agresiva; en su lugar se construyó un texto enriquecido que concatenaba la afirmación con el hablante, el tema y la afiliación política, incorporando \emph{metadata} directamente en la entrada del modelo.
-
-\subsection{Conclusiones}
 
 En este proyecto se abordó un problema de clasificación de afirmaciones políticas~\cite{liar} mediante técnicas de procesamiento del lenguaje natural y aprendizaje automático. A lo largo del desarrollo se evaluaron distintos enfoques, desde modelos lineales clásicos hasta arquitecturas Transformer~\cite{hf_transformers,deberta} y estrategias \emph{ensemble} avanzadas~\cite{lgbm,catboost,xgboost}.
 
@@ -268,11 +288,11 @@ Los modelos lineales basados en TF-IDF~\cite{sklearn} ofrecieron \emph{baselines
 
 También se observó la importancia de controlar el sobreajuste y evitar \emph{leakage} en variables relacionadas con el historial de veracidad de los hablantes. El uso de validación cruzada estratificada~\cite{sklearn} y estrategias \emph{out-of-fold} permitió reducir este problema y obtener estimaciones más realistas del rendimiento.
 
-El mejor resultado del proyecto se obtuvo con Mistral-7B LoRA~\cite{peft,mistral} en modo \emph{standalone}, alcanzando Macro F1 = 0,670 y ROC-AUC = 0,741. Una lección clave de la fase final fue que el \emph{stacking} con GBDT resultó contraproducente cuando el transformer dominaba el \emph{ensemble}: el coeficiente del meta-clasificador ascendió a 2,75 para el transformer frente a 0,08--0,50 para los modelos de árboles. Eliminar los GBDT y aplicar directamente un \emph{threshold sweep} sobre las predicciones OOF del transformer mejoró el Macro F1 en más de 0,05 puntos sobre la \emph{baseline} de \emph{stacking}. El \emph{ensemble} es una herramienta útil cuando los modelos son complementarios, pero resulta perjudicial cuando uno de ellos es cualitativamente superior.
+El mejor resultado del proyecto se alcanzó mediante \emph{distillation} desde un voting ensemble: las predicciones combinadas de Mistral-7B~\cite{mistral} y DeBERTa-v3-large~\cite{deberta} se usaron como \emph{pseudo-labels} del test para reentrenar un nuevo DeBERTa-v3-large, logrando \textbf{Macro F1 = 0,696} en el \emph{leaderboard} público de Kaggle. El factor determinante fue la diversidad arquitectónica real entre ambos modelos (LLM \emph{decoder-only} frente a \emph{encoder} bidireccional): el \emph{pseudo-labeling} desde DeBERTa-large sobre sí mismo, en cambio, no aportó señal nueva (correlación de 0,98 con el original), y añadir RoBERTa-large o ELECTRA-large al voting empeoró el resultado, evidenciando que más modelos no equivale a mejor \emph{ensemble}. En la fase de modelos individuales, el \emph{stacking} con GBDT resultó contraproducente cuando el transformer dominaba el \emph{ensemble}: aplicar directamente un \emph{threshold sweep} sobre las predicciones OOF del transformer mejoró el Macro F1 en más de 0,05 puntos. De igual modo, los \emph{stacks} con muchos modelos clásicos enriquecidos mejoraban la validación cruzada pero empeoraban en el \emph{leaderboard}, evidenciando sobreajuste a los \emph{folds}.
 
 También se comprobó la importancia de la tasa de aprendizaje en el \emph{fine-tuning} con LoRA: con LR\,=\,2e-4, el \emph{score head} inicializado aleatoriamente generaba pérdidas extremas en el \emph{batch}\,0 que impedían la convergencia de un \emph{fold} completo. Reducir a LR\,=\,5e-5 e inicializar el \emph{score head} con desviación estándar 0,01 dio cinco \emph{folds} estables y el mejor Macro F1 del proyecto.
 
-En conclusión, el proyecto permitió comparar técnicas de clasificación textual desde modelos lineales hasta LLM de 7B parámetros, comprobando cómo la integración de información contextual, el ajuste cuidadoso de hiperparámetros y la elección correcta de la estrategia de \emph{ensemble} son determinantes para el rendimiento en tareas de detección de desinformación política.
+En conclusión, el proyecto permitió comparar técnicas de clasificación textual desde modelos lineales hasta LLM de 7B parámetros, comprobando cómo la integración de información contextual, el ajuste cuidadoso de hiperparámetros, la elección correcta de la estrategia de \emph{ensemble} y, finalmente, la \emph{distillation} desde un \emph{ensemble} de modelos arquitectónicamente diversos son determinantes para el rendimiento en tareas de detección de desinformación política.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \bibliographystyle{unsrtnat}
