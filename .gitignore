@@ -50,6 +50,7 @@ checkpoints/
 artifacts/
 outputs/
 submissions/
+experiments/
 
 # Large data artifacts (keep source CSVs in data/ tracked)
 *.parquet
@@ -61,6 +62,21 @@ submissions/
 *.npz
 CLAUDE.md
 catboost_info/catboost_training.json
+
+catboost_info/time_left.tsv
+catboost_info/learn/events.out.tfevents
+catboost_info/learn_error.tsv
+notebooks/AdvancedModels/catboost_info/learn_error.tsv
+
+notebooks/TreeModels/catboost_info/catboost_training.json
+
+notebooks/TreeModels/catboost_info/learn_error.tsv
+notebooks/AdvancedModels/catboost_info/catboost_training.json
+notebooks/AdvancedModels/catboost_info/time_left.tsv
+notebooks/AdvancedModels/catboost_info/learn/events.out.tfevents
+notebooks/TreeModels/catboost_info/time_left.tsv
+
+notebooks/TreeModels/catboost_info/learn/events.out.tfevents
 .gitignore
 catboost_info/time_left.tsv
 catboost_info/learn/events.out.tfevents

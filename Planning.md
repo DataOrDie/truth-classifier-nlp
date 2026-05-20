@@ -55,3 +55,81 @@ Objetivo organizativo: 6 personas, trabajo independiente en ML, tuning y testing
 - Congelar el código final y preparar el ZIP de entrega.
 - Redactar la memoria de grupo y revisar la presentación.
 - Confirmar que todos los miembros han participado en el análisis y en la presentación.
+
+
+
+------
+
+Next Steps — Recommended Order                                                                                                                                       
+                                                                                                                                                                       
+  Tier 1: Gradient Boosting (highest ROI, run on PC today)                                                                                                             
+                                                                                                                                                                       
+  Your feature matrix — 384-dim embeddings + rich metadata — is exactly what gradient boosting excels at. These typically beat both LR and RFC on tabular-NLP blends.
+
+  XGBoost or LightGBM — drop-in for your existing rfc.py pattern, trains in minutes on CPU, supports class_weight, has built-in HP search. LightGBM is faster; XGBoost
+  has slightly better defaults out of the box.
+
+  CatBoost — handles categorical columns (speaker, party, subject) natively without OrdinalEncoder. Particularly strong when you have high-cardinality string features.
+   Very little tuning needed.
+
+  Why these first: Literature on PolitiFact-style datasets consistently puts gradient boosting at or above RF. Adding true-rate features (which you already have) gives
+   XGB/CatBoost a big edge.
+
+  ---
+  Tier 2: Ensemble / Stacking (quick win once you have 3+ models)
+
+  You already collect OOF probabilities in your CV loop. Once you have LR + RFC + XGB probas, stack them with a simple LR or ridge meta-learner. This is often worth
+  +1–2 F1 points with zero new features.
+
+  ---
+  Tier 3: Fine-tuned Transformers (best ceiling, needs Kaggle GPU)
+
+  A fine-tuned DistilBERT or DeBERTa-v3-small on the raw statement column will outperform all of the above on the text signal — but metadata features (speaker, party,
+  true-rates) won't be directly used. The best approach is a hybrid: transformer text head + metadata MLP head → combined classifier.
+
+  - On Kaggle: free T4 GPU, fits DistilBERT or deberta-v3-small fine-tuning in ~20 min
+  - On PC without GPU: too slow for full fine-tuning, but you could use the transformer just for embeddings (larger model than all-MiniLM-L6-v2, e.g.
+  all-mpnet-base-v2)
+
+  ---
+  Tier 4: Bigger Embeddings (easy upgrade, no new model)
+
+  Swap all-MiniLM-L6-v2 (384-dim) for all-mpnet-base-v2 (768-dim) in your current LR/RFC/XGB runs. Often +1–2 points with zero code change beyond the model name.
+  Slower preprocessing but same training code.
+
+  ---
+  Concrete recommended sequence
+
+  ┌──────┬───────────────────────────────────────────┬────────┬────────────────────────────────────┐
+  │ Step │                   Model                   │ Where  │          New dependencies          │
+  ├──────┼───────────────────────────────────────────┼────────┼────────────────────────────────────┤
+  │ 1    │ LightGBM                                  │ PC     │ pip install lightgbm               │
+  ├──────┼───────────────────────────────────────────┼────────┼────────────────────────────────────┤
+  │ 2    │ CatBoost                                  │ PC     │ pip install catboost               │
+  ├──────┼───────────────────────────────────────────┼────────┼────────────────────────────────────┤
+  │ 3    │ Stacking ensemble                         │ PC     │ already have sklearn               │
+  ├──────┼───────────────────────────────────────────┼────────┼────────────────────────────────────┤
+  │ 4    │ Bigger embeddings (all-mpnet-base-v2)     │ PC     │ already have sentence-transformers │
+  ├──────┼───────────────────────────────────────────┼────────┼────────────────────────────────────┤
+  │ 5    │ Fine-tuned DistilBERT or DeBERTa          │ Kaggle │ transformers, torch                │
+  ├──────┼───────────────────────────────────────────┼────────┼────────────────────────────────────┤
+  Slower preprocessing but same training code.
+
+  ---
+  Concrete recommended sequence
+
+  ┌──────┬───────────────────────────────────────────┬────────┬────────────────────────────────────┐
+  │ Step │                   Model                   │ Where  │          New dependencies          │
+  ├──────┼───────────────────────────────────────────┼────────┼────────────────────────────────────┤
+  │ 1    │ LightGBM                                  │ PC     │ pip install lightgbm               │
+  ├──────┼───────────────────────────────────────────┼────────┼────────────────────────────────────┤
+  │ 2    │ CatBoost                                  │ PC     │ pip install catboost               │
+  ├──────┼───────────────────────────────────────────┼────────┼────────────────────────────────────┤
+  │ 3    │ Stacking ensemble                         │ PC     │ already have sklearn               │
+  ├──────┼───────────────────────────────────────────┼────────┼────────────────────────────────────┤
+  │ 4    │ Bigger embeddings (all-mpnet-base-v2)     │ PC     │ already have sentence-transformers │
+  ├──────┼───────────────────────────────────────────┼────────┼────────────────────────────────────┤
+  │ 5    │ Fine-tuned DistilBERT or DeBERTa          │ Kaggle │ transformers, torch                │
+  ├──────┼───────────────────────────────────────────┼────────┼────────────────────────────────────┤
+  │ 6    │ Hybrid: fine-tuned transformer + metadata │ Kaggle │ same                               │
+  └──────┴───────────────────────────────────────────┴────────┴────────────────────────────────────┘
