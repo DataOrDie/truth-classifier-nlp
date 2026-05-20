@@ -59,22 +59,20 @@
 % ── Title page ───────────────────────────────────────────────────────────────
 \begin{titlepage}
   \centering
-  \vspace*{2cm}
-  {\Large\bfseries Universidad Politécnica de Madrid\\[0.4em]
-  Escuela Técnica Superior de Ingeniería Informática\par}
-  \vspace{1.5cm}
-  \rule{\linewidth}{0.5pt}\\[0.5em]
-  {\LARGE\bfseries Clasificación Automática de\\[0.3em]
+  \vspace*{1cm}
+  {\large\bfseries Universidad Politécnica de Madrid\\[0.3em]
+  Escuela T\'{e}cnica Superior de Ingenieros de Telecomunicaci\'{o}n\par}
+  \vspace{0.9cm}
+  \rule{\linewidth}{0.5pt}\\[0.4em]
+  {\Large\bfseries Clasificación Automática de\\[0.3em]
   Afirmaciones Políticas\\[0.3em]
   mediante Procesamiento del Lenguaje Natural\par}
-  \vspace{0.5em}\rule{\linewidth}{0.5pt}
-  \vspace{1.2cm}
+  \vspace{0.4em}\rule{\linewidth}{0.5pt}
+  \vspace{0.9cm}
   {\large Asignatura ABID --- Kaggle Challenge II\par}
-  \vspace{1.5cm}
-    % Task/dataset/metric/platform block removed per request
-  \vspace{1.5cm}
+  \vspace{1.2cm}
   {\large\bfseries Grupo 1\par}
-  \vspace{0.6cm}
+  \vspace{0.5cm}
   {\normalsize
   \begin{tabular}{c}
     Marla Gonz\'{a}lez Escobar               \\[0.3em]
@@ -105,7 +103,7 @@ Esta memoria resume el análisis del conjunto de datos, el preprocesamiento real
 \section{Descripción del problema}
 % ─────────────────────────────────────────────────────────────────────────────
 
-El objetivo del proyecto consiste en desarrollar un sistema capaz de clasificar afirmaciones políticas como verdaderas o falsas utilizando técnicas de Procesamiento del Lenguaje Natural y aprendizaje automático. Se trata de un problema de clasificación binaria, donde la variable objetivo toma el valor~1 para las afirmaciones verdaderas y~0 para las afirmaciones falsas.
+El objetivo del proyecto consiste en desarrollar un sistema capaz de clasificar afirmaciones políticas como verdaderas o falsas utilizando técnicas de Procesamiento del Lenguaje Natural y aprendizaje automático. Se trata de un problema de clasificación binaria, donde tenemos que identificar si una afirmación es \emph{fake news} o no.
 
 El \emph{input} principal es el texto de la afirmación, pero también se cuenta con metadatos como tema, \emph{speaker}, ocupación, estado y afiliación política, que pueden aportar señal adicional al modelo.
 
@@ -115,7 +113,7 @@ El reto central es que la veracidad no siempre se puede inferir solo del texto: 
 \section{Descripción del conjunto de datos}
 % ─────────────────────────────────────────────────────────────────────────────
 
-El conjunto de datos utilizado~\cite{liar} contiene afirmaciones políticas acompañadas de información contextual relacionada con cada una de ellas. Cada registro incluye el texto de la afirmación, recogido en la variable \texttt{statement}, junto con distintos metadatos como el tema tratado (\texttt{subject}), el hablante (\texttt{speaker}), su ocupación (\texttt{speaker\_job}), el estado (\texttt{state\_info}) y la afiliación política (\texttt{party\_affiliation}). La variable objetivo es \texttt{label}, donde el valor~1 representa una afirmación verdadera y el valor~0 una afirmación falsa.
+El conjunto de datos utilizado~\cite{liar} contiene afirmaciones políticas acompañadas de información contextual relacionada con cada una de ellas. Cada registro incluye el texto de la afirmación, recogido en la variable \texttt{statement}, junto con distintos metadatos como el tema tratado (\texttt{subject}), el hablante (\texttt{speaker}), su ocupación (\texttt{speaker\_job}), el estado (\texttt{state\_info}) y la afiliación política (\texttt{party\_affiliation}). La variable objetivo es \texttt{label}, donde el valor~1 representa una afirmación falsa y el valor~0 una afirmación verdadera.
 
 \begin{table}[H]
   \centering
@@ -126,7 +124,7 @@ El conjunto de datos utilizado~\cite{liar} contiene afirmaciones políticas acom
     \textbf{Variable}           & \textbf{Tipo}       & \textbf{Descripción y Pre-Procesamiento} \\
     \midrule
     \texttt{id}                 & Identificador       & Solo para trazabilidad; excluido del modelo. \\
-    \texttt{label}              & Target binario      & 0 = verdadero, 1 = falso. \\
+    \texttt{label}              & Target binario      & 0 = verdadero, 1 = falso (es fake news).\\
     \texttt{statement}          & Texto               & La afirmación política. se utilizaron análisis lexicográficos para procesarla. \\
     \texttt{subject}            & Categórica          & Tema(s) de la afirmación; reducción de dimensiones  \\
     \texttt{speaker}            & Categórica          & Persona que realiza la afirmación. Limpieza de datos. \\
@@ -168,7 +166,7 @@ donde \texttt{[SEP]} es el token separador estándar del \emph{tokenizer}. Este 
 \section{Descripción de tareas comunes}
 % ─────────────────────────────────────────────────────────────────────────────
 
-El proyecto se desarrolló de forma colaborativa: cada integrante trabajó sobre etapas o modelos distintos, mientras que las decisiones de preprocesamiento, evaluación y comparación de resultados se tomaron de forma conjunta. Se utilizó GitHub~\cite{github} como repositorio común y Kaggle~\cite{kaggle} para la generación y envío de \emph{submissions}. La búsqueda de hiperparámetros se realizó con \texttt{RandomizedSearchCV}~\cite{sklearn}; en los modelos Transformer se ajustaron adicionalmente \emph{learning rate}, \emph{batch size}, \emph{dropout}, número de épocas, umbral de decisión y \emph{warmup}.
+El proyecto se desarrolló de forma colaborativa: cada integrante trabajó sobre etapas o modelos distintos, mientras que las decisiones de preprocesamiento, evaluación y comparación de resultados se tomaron de forma conjunta. Se utilizó GitHub~\cite{github} como repositorio del equipo (\url{https://github.com/DataOrDie/truth-classifier-nlp}) y Kaggle~\cite{kaggle} para el entrenamiento de modelos, generación y envío de \emph{submissions}. La búsqueda de hiperparámetros se realizó con \texttt{RandomizedSearchCV}~\cite{sklearn}; en los modelos Transformer se ajustaron adicionalmente \emph{learning rate}, \emph{batch size}, \emph{dropout}, número de épocas, umbral de decisión y \emph{warmup}.
 
 \subsection*{Herramientas y tecnologías}
 
@@ -216,7 +214,7 @@ Finalmente, se implementó \emph{stacking} con meta-clasificador Logistic Regres
 
 \subsubsection{Transformers}
 
-La última familia de modelos evaluados estuvo basada en arquitecturas Transformer preentrenadas~\cite{hf_transformers}, especialmente DeBERTa~\cite{deberta}. Estos modelos permiten capturar relaciones contextuales y semánticas más complejas que los enfoques basados únicamente en TF-IDF o \emph{embeddings} estáticos.
+La última familia de modelos evaluados estuvo basada en arquitecturas Transformer preentrenadas~\cite{hf_transformers}. Estos modelos permiten capturar relaciones contextuales y semánticas más complejas que los enfoques basados únicamente en TF-IDF o \emph{embeddings} estáticos.
 
 Para los Transformers se utilizó texto enriquecido con \emph{metadata} contextual, incorporando información como el hablante, el tema y la afiliación política directamente en la entrada textual del modelo. Además, se ajustaron hiperparámetros como \emph{learning rate}, \emph{batch size}, \emph{dropout} y número de épocas para optimizar el rendimiento. Para los experimentos de \emph{fine-tuning} eficiente se emplearon las librerías PEFT y bitsandbytes~\cite{peft,bitsandbytes}.
 
@@ -288,13 +286,14 @@ Los modelos lineales basados en TF-IDF~\cite{sklearn} ofrecieron \emph{baselines
 
 También se observó la importancia de controlar el sobreajuste y evitar \emph{leakage} en variables relacionadas con el historial de veracidad de los hablantes. El uso de validación cruzada estratificada~\cite{sklearn} y estrategias \emph{out-of-fold} permitió reducir este problema y obtener estimaciones más realistas del rendimiento.
 
-El mejor resultado del proyecto se alcanzó mediante \emph{distillation} desde un voting ensemble: las predicciones combinadas de Mistral-7B~\cite{mistral} y DeBERTa-v3-large~\cite{deberta} se usaron como \emph{pseudo-labels} del test para reentrenar un nuevo DeBERTa-v3-large, logrando \textbf{Macro F1 = 0,696} en el \emph{leaderboard} público de Kaggle. El factor determinante fue la diversidad arquitectónica real entre ambos modelos (LLM \emph{decoder-only} frente a \emph{encoder} bidireccional): el \emph{pseudo-labeling} desde DeBERTa-large sobre sí mismo, en cambio, no aportó señal nueva (correlación de 0,98 con el original), y añadir RoBERTa-large o ELECTRA-large al voting empeoró el resultado, evidenciando que más modelos no equivale a mejor \emph{ensemble}. En la fase de modelos individuales, el \emph{stacking} con GBDT resultó contraproducente cuando el transformer dominaba el \emph{ensemble}: aplicar directamente un \emph{threshold sweep} sobre las predicciones OOF del transformer mejoró el Macro F1 en más de 0,05 puntos. De igual modo, los \emph{stacks} con muchos modelos clásicos enriquecidos mejoraban la validación cruzada pero empeoraban en el \emph{leaderboard}, evidenciando sobreajuste a los \emph{folds}.
+En la fase de modelos individuales, el \emph{stacking} con GBDT resultó contraproducente cuando el transformer dominaba el \emph{ensemble}: aplicar directamente un \emph{threshold sweep} sobre las predicciones OOF del transformer mejoró el Macro F1 en más de 0,05 puntos. De igual modo, los \emph{stacks} con muchos modelos clásicos enriquecidos mejoraban la validación cruzada pero empeoraban en el \emph{leaderboard}, evidenciando sobreajuste a los \emph{folds}.
 
-También se comprobó la importancia de la tasa de aprendizaje en el \emph{fine-tuning} con LoRA: con LR\,=\,2e-4, el \emph{score head} inicializado aleatoriamente generaba pérdidas extremas en el \emph{batch}\,0 que impedían la convergencia de un \emph{fold} completo. Reducir a LR\,=\,5e-5 e inicializar el \emph{score head} con desviación estándar 0,01 dio cinco \emph{folds} estables y el mejor Macro F1 del proyecto.
+El mejor resultado del proyecto se alcanzó mediante \emph{distillation} desde un voting ensemble: las predicciones combinadas de Mistral-7B~\cite{mistral} y DeBERTa-v3-large~\cite{deberta} se usaron como \emph{pseudo-labels} del test para reentrenar un nuevo DeBERTa-v3-large, logrando \textbf{Macro F1 = 0,696} en el \emph{leaderboard} público de Kaggle. El factor determinante fue la diversidad arquitectónica real entre ambos modelos (LLM \emph{decoder-only} frente a \emph{encoder} bidireccional): el \emph{pseudo-labeling} desde DeBERTa-large sobre sí mismo, en cambio, no aportó señal nueva (correlación de 0,98 con el original), y añadir RoBERTa-large o ELECTRA-large al voting empeoró el resultado, evidenciando que más modelos no equivale a mejor \emph{ensemble}. 
 
 En conclusión, el proyecto permitió comparar técnicas de clasificación textual desde modelos lineales hasta LLM de 7B parámetros, comprobando cómo la integración de información contextual, el ajuste cuidadoso de hiperparámetros, la elección correcta de la estrategia de \emph{ensemble} y, finalmente, la \emph{distillation} desde un \emph{ensemble} de modelos arquitectónicamente diversos son determinantes para el rendimiento en tareas de detección de desinformación política.
 
 % ─────────────────────────────────────────────────────────────────────────────
+\newpage
 \bibliographystyle{unsrtnat}
 \bibliography{references}
 % ─────────────────────────────────────────────────────────────────────────────
