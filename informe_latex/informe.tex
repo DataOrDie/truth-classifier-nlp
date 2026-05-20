@@ -139,7 +139,7 @@ Durante el análisis exploratorio inicial se observó que el conjunto de entrena
 
 También se detectaron valores nulos en las variables \texttt{speaker\_job} (27,7\,\% de valores ausentes) y \texttt{state\_info} ($\sim$22\,\%). En lugar de eliminar estos registros, los valores faltantes se sustituyeron por la categoría \texttt{unknown}, conservando así todas las muestras disponibles y permitiendo que los modelos pudieran tratar la ausencia de información como una categoría más.
 
-Otro aspecto relevante del \emph{dataset} es la alta cardinalidad de algunas variables categóricas: \texttt{speaker} (2.634 valores únicos) y \texttt{speaker\_job} (1.018 únicos), donde el 84,6\,\% de los cargos aparece menos de cinco veces. Para reducir ruido y mejorar la generalización, las categorías poco frecuentes se agruparon bajo la etiqueta \texttt{other}.
+Un aspecto relevante del \emph{dataset} es la alta cardinalidad de algunas variables categóricas: \texttt{speaker} (2.634 valores únicos) y \texttt{speaker\_job} (1.018 únicos), donde el 84,6\,\% de los cargos aparece menos de cinco veces. Para reducir ruido y mejorar la generalización, las categorías poco frecuentes se agruparon bajo la etiqueta \texttt{other}.
 
 Otro aspecto relevante fue la calidad de la columna \texttt{statement}, que presentó un alto grado de corrupción: caracteres Unicode mal codificados, fragmentos JSON embebidos en el texto y secciones del archivo originalmente en formato TSV en lugar de CSV, lo que provocaba desplazamientos de columnas. Fue necesario implementar un proceso de limpieza específico para recuperar correctamente el texto de cada afirmación antes de cualquier representación textual.
 
